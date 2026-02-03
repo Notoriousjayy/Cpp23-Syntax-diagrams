@@ -1,24 +1,36 @@
-// cpp-syntax-diagrams.ts
-//
-// ES module that defines the C++ grammar as railroad diagrams.
-// Based on the C++ Standard Grammar Summary (Annex A).
-// Many rules are rendered in diagram-friendly equivalent form.
+/**
+ * C++23 Grammar Definitions
+ * 
+ * ES module that defines the C++ grammar as railroad diagrams.
+ * Based on the C++ Standard Grammar Summary (Annex A).
+ * Reference: https://eel.is/c++draft/gram
+ * 
+ * Many rules are rendered in diagram-friendly equivalent form 
+ * (e.g., left recursion -> repetition).
+ */
 
 import * as RR from "@prantlf/railroad-diagrams/lib/index.mjs";
 
-// Convenience wrappers
-function callOrNew(Ctor: any, ...args: any[]): any {
+// Convenience wrappers ------------------------------------------------------
+//
+// The @prantlf/railroad-diagrams package has shipped in builds where the exported
+// primitives are factory functions and builds where they are ES class constructors.
+// Calling a class constructor without `new` throws:
+//   "Class constructor X cannot be invoked without 'new'"
+//
+// `callOrNew` lets us treat everything as a callable, regardless of how it is exported.
+function callOrNew(Ctor: any, ...args: any[]) {
   try {
     return Ctor(...args);
-  } catch (e: any) {
-    if (e instanceof TypeError && /without 'new'/.test(e.message)) {
+  } catch (e) {
+    if (e instanceof TypeError && /without 'new'/.test((e as Error).message)) {
       return new Ctor(...args);
     }
     throw e;
   }
 }
 
-// Wrapped primitives
+// Wrapped primitives (use these throughout the file)
 const Diagram    = (...a: any[]) => callOrNew(RR.Diagram, ...a);
 const Sequence   = (...a: any[]) => callOrNew(RR.Sequence, ...a);
 const Choice     = (...a: any[]) => callOrNew(RR.Choice, ...a);
@@ -32,7 +44,6 @@ const Comment    = (...a: any[]) => callOrNew(RR.Comment, ...a);
 
 const T  = (s: string) => Terminal(s);
 const NT = (s: string) => NonTerminal(s);
-const K  = (s: string) => Terminal(s); // Keyword
 
 // --- Grammar rules (diagram factories) ----------------------------------------
 
@@ -82,7 +93,7 @@ rules.set("template-name", () =>
 // ===== A.3 Lexical conventions [gram.lex] =====
 
 rules.set("n-char", () =>
-  Diagram(Comment("any char except } or new-line"))
+  Diagram(Comment("any member of the translation character set except } or new-line"))
 );
 
 rules.set("n-char-sequence", () =>
@@ -90,9 +101,7 @@ rules.set("n-char-sequence", () =>
 );
 
 rules.set("named-universal-character", () =>
-  Diagram(
-    Sequence(T("\\N{"), NT("n-char-sequence"), T("}"))
-  )
+  Diagram(Sequence(T("\\N{"), NT("n-char-sequence"), T("}")))
 );
 
 rules.set("hex-quad", () =>
@@ -135,7 +144,7 @@ rules.set("preprocessing-token", () =>
       NT("string-literal"),
       NT("user-defined-string-literal"),
       NT("preprocessing-op-or-punc"),
-      Comment("non-whitespace char")
+      Comment("other non-whitespace")
     )
   )
 );
@@ -165,7 +174,7 @@ rules.set("h-char-sequence", () =>
 );
 
 rules.set("h-char", () =>
-  Diagram(Comment("any char except new-line or >"))
+  Diagram(Comment("any character except new-line and >"))
 );
 
 rules.set("q-char-sequence", () =>
@@ -173,21 +182,22 @@ rules.set("q-char-sequence", () =>
 );
 
 rules.set("q-char", () =>
-  Diagram(Comment('any char except new-line or "'))
+  Diagram(Comment('any character except new-line and "'))
 );
 
 rules.set("pp-number", () =>
   Diagram(
-    Sequence(
-      Choice(0, NT("digit"), Sequence(T("."), NT("digit"))),
-      ZeroOrMore(
-        Choice(0,
-          NT("identifier-continue"),
-          Sequence(T("'"), NT("digit")),
-          Sequence(T("'"), NT("nondigit")),
-          Sequence(Choice(0, T("e"), T("E"), T("p"), T("P")), NT("sign")),
-          T(".")
-        )
+    Choice(0,
+      NT("digit"),
+      Sequence(T("."), NT("digit"))
+    ),
+    ZeroOrMore(
+      Choice(0,
+        NT("identifier-continue"),
+        Sequence(T("'"), NT("digit")),
+        Sequence(T("'"), NT("nondigit")),
+        Sequence(Choice(0, T("e"), T("E"), T("p"), T("P")), NT("sign")),
+        T(".")
       )
     )
   )
@@ -206,7 +216,7 @@ rules.set("identifier-start", () =>
   Diagram(
     Choice(0,
       NT("nondigit"),
-      Comment("Unicode XID_Start")
+      Comment("XID_Start character")
     )
   )
 );
@@ -216,7 +226,7 @@ rules.set("identifier-continue", () =>
     Choice(0,
       NT("digit"),
       NT("nondigit"),
-      Comment("Unicode XID_Continue")
+      Comment("XID_Continue character")
     )
   )
 );
@@ -224,21 +234,21 @@ rules.set("identifier-continue", () =>
 rules.set("nondigit", () =>
   Diagram(
     Choice(0,
-      T("a-z"), T("A-Z"), T("_")
+      T("a-z"),
+      T("A-Z"),
+      T("_")
     )
   )
 );
 
 rules.set("digit", () =>
-  Diagram(
-    Choice(0, T("0"), T("1"), T("2"), T("3"), T("4"), T("5"), T("6"), T("7"), T("8"), T("9"))
-  )
+  Diagram(T("0-9"))
 );
 
 rules.set("keyword", () =>
   Diagram(
     Choice(0,
-      Comment("any identifier in Table 5"),
+      Comment("any identifier listed in Table 5"),
       NT("import-keyword"),
       NT("module-keyword"),
       NT("export-keyword")
@@ -263,19 +273,18 @@ rules.set("preprocessing-operator", () =>
 
 rules.set("operator-or-punctuator", () =>
   Diagram(
-    Choice(0,
-      T("{"), T("}"), T("["), T("]"), T("("), T(")"),
-      T("<:"), T(":>"), T("<%"), T("%>"), T(";"), T(":"), T("..."),
-      T("?"), T("::"), T("."), T(".*"), T("->"), T("->*"), T("~"),
-      T("!"), T("+"), T("-"), T("*"), T("/"), T("%"), T("^"), T("&"), T("|"),
-      T("="), T("+="), T("-="), T("*="), T("/="), T("%="), T("^="), T("&="), T("|="),
-      T("=="), T("!="), T("<"), T(">"), T("<="), T(">="), T("<=>"), T("&&"), T("||"),
-      T("<<"), T(">>"), T("<<="), T(">>="), T("++"), T("--"), T(","),
-      K("and"), K("or"), K("xor"), K("not"), K("bitand"), K("bitor"), K("compl"),
-      K("and_eq"), K("or_eq"), K("xor_eq"), K("not_eq")
+    Stack(
+      Choice(0, T("{"), T("}"), T("["), T("]"), T("("), T(")"), T("<:"), T(":>"), T("<%"), T("%>")),
+      Choice(0, T(";"), T(":"), T("..."), T("?"), T("::"), T("."), T(".*"), T("->"), T("->*"), T("~")),
+      Choice(0, T("!"), T("+"), T("-"), T("*"), T("/"), T("%"), T("^"), T("&"), T("|")),
+      Choice(0, T("="), T("+="), T("-="), T("*="), T("/="), T("%="), T("^="), T("&="), T("|=")),
+      Choice(0, T("=="), T("!="), T("<"), T(">"), T("<="), T(">="), T("<=>"), T("&&"), T("||")),
+      Choice(0, T("<<"), T(">>"), T("<<="), T(">>="), T("++"), T("--"), T(","))
     )
   )
 );
+
+// ===== A.3 Literals =====
 
 rules.set("literal", () =>
   Diagram(
@@ -293,49 +302,42 @@ rules.set("literal", () =>
 
 rules.set("integer-literal", () =>
   Diagram(
-    Sequence(
-      Choice(0,
-        NT("binary-literal"),
-        NT("octal-literal"),
-        NT("decimal-literal"),
-        NT("hexadecimal-literal")
-      ),
-      Optional(NT("integer-suffix"))
-    )
+    Choice(0,
+      NT("binary-literal"),
+      NT("octal-literal"),
+      NT("decimal-literal"),
+      NT("hexadecimal-literal")
+    ),
+    Optional(NT("integer-suffix"))
   )
 );
 
 rules.set("binary-literal", () =>
   Diagram(
-    Sequence(
-      Choice(0, T("0b"), T("0B")),
-      NT("binary-digit"),
-      ZeroOrMore(Sequence(Optional(T("'")), NT("binary-digit")))
-    )
+    Choice(0, T("0b"), T("0B")),
+    NT("binary-digit"),
+    ZeroOrMore(Sequence(Optional(T("'")), NT("binary-digit")))
   )
 );
 
 rules.set("octal-literal", () =>
   Diagram(
-    Choice(0,
-      T("0"),
-      Sequence(T("0"), OneOrMore(Sequence(Optional(T("'")), NT("octal-digit"))))
-    )
+    T("0"),
+    ZeroOrMore(Sequence(Optional(T("'")), NT("octal-digit")))
   )
 );
 
 rules.set("decimal-literal", () =>
   Diagram(
-    Sequence(
-      NT("nonzero-digit"),
-      ZeroOrMore(Sequence(Optional(T("'")), NT("digit")))
-    )
+    NT("nonzero-digit"),
+    ZeroOrMore(Sequence(Optional(T("'")), NT("digit")))
   )
 );
 
 rules.set("hexadecimal-literal", () =>
   Diagram(
-    Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-digit-sequence"))
+    NT("hexadecimal-prefix"),
+    NT("hexadecimal-digit-sequence")
   )
 );
 
@@ -344,11 +346,11 @@ rules.set("binary-digit", () =>
 );
 
 rules.set("octal-digit", () =>
-  Diagram(Choice(0, T("0"), T("1"), T("2"), T("3"), T("4"), T("5"), T("6"), T("7")))
+  Diagram(T("0-7"))
 );
 
 rules.set("nonzero-digit", () =>
-  Diagram(Choice(0, T("1"), T("2"), T("3"), T("4"), T("5"), T("6"), T("7"), T("8"), T("9")))
+  Diagram(T("1-9"))
 );
 
 rules.set("hexadecimal-prefix", () =>
@@ -357,21 +359,13 @@ rules.set("hexadecimal-prefix", () =>
 
 rules.set("hexadecimal-digit-sequence", () =>
   Diagram(
-    Sequence(
-      NT("hexadecimal-digit"),
-      ZeroOrMore(Sequence(Optional(T("'")), NT("hexadecimal-digit")))
-    )
+    NT("hexadecimal-digit"),
+    ZeroOrMore(Sequence(Optional(T("'")), NT("hexadecimal-digit")))
   )
 );
 
 rules.set("hexadecimal-digit", () =>
-  Diagram(
-    Choice(0,
-      T("0"), T("1"), T("2"), T("3"), T("4"), T("5"), T("6"), T("7"), T("8"), T("9"),
-      T("a"), T("b"), T("c"), T("d"), T("e"), T("f"),
-      T("A"), T("B"), T("C"), T("D"), T("E"), T("F")
-    )
-  )
+  Diagram(Choice(0, T("0-9"), T("a-f"), T("A-F")))
 );
 
 rules.set("integer-suffix", () =>
@@ -403,12 +397,10 @@ rules.set("size-suffix", () =>
 
 rules.set("character-literal", () =>
   Diagram(
-    Sequence(
-      Optional(NT("encoding-prefix")),
-      T("'"),
-      NT("c-char-sequence"),
-      T("'")
-    )
+    Optional(NT("encoding-prefix")),
+    T("'"),
+    NT("c-char-sequence"),
+    T("'")
   )
 );
 
@@ -431,7 +423,7 @@ rules.set("c-char", () =>
 );
 
 rules.set("basic-c-char", () =>
-  Diagram(Comment("any char except ', \\, or new-line"))
+  Diagram(Comment("any character except ', \\, or new-line"))
 );
 
 rules.set("escape-sequence", () =>
@@ -446,7 +438,8 @@ rules.set("escape-sequence", () =>
 
 rules.set("simple-escape-sequence", () =>
   Diagram(
-    Sequence(T("\\"), NT("simple-escape-sequence-char"))
+    T("\\"),
+    NT("simple-escape-sequence-char")
   )
 );
 
@@ -472,9 +465,7 @@ rules.set("simple-octal-digit-sequence", () =>
 rules.set("octal-escape-sequence", () =>
   Diagram(
     Choice(0,
-      Sequence(T("\\"), NT("octal-digit")),
-      Sequence(T("\\"), NT("octal-digit"), NT("octal-digit")),
-      Sequence(T("\\"), NT("octal-digit"), NT("octal-digit"), NT("octal-digit")),
+      Sequence(T("\\"), NT("octal-digit"), Optional(NT("octal-digit")), Optional(NT("octal-digit"))),
       Sequence(T("\\o{"), NT("simple-octal-digit-sequence"), T("}"))
     )
   )
@@ -491,12 +482,13 @@ rules.set("hexadecimal-escape-sequence", () =>
 
 rules.set("conditional-escape-sequence", () =>
   Diagram(
-    Sequence(T("\\"), NT("conditional-escape-sequence-char"))
+    T("\\"),
+    NT("conditional-escape-sequence-char")
   )
 );
 
 rules.set("conditional-escape-sequence-char", () =>
-  Diagram(Comment("basic char not octal/escape/N/o/u/U/x"))
+  Diagram(Comment("any basic char not octal-digit, escape-char, N, o, u, U, x"))
 );
 
 rules.set("floating-point-literal", () =>
@@ -511,18 +503,22 @@ rules.set("floating-point-literal", () =>
 rules.set("decimal-floating-point-literal", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("fractional-constant"), Optional(NT("exponent-part")), Optional(NT("floating-point-suffix"))),
-      Sequence(NT("digit-sequence"), NT("exponent-part"), Optional(NT("floating-point-suffix")))
-    )
+      Sequence(NT("fractional-constant"), Optional(NT("exponent-part"))),
+      Sequence(NT("digit-sequence"), NT("exponent-part"))
+    ),
+    Optional(NT("floating-point-suffix"))
   )
 );
 
 rules.set("hexadecimal-floating-point-literal", () =>
   Diagram(
+    NT("hexadecimal-prefix"),
     Choice(0,
-      Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-fractional-constant"), NT("binary-exponent-part"), Optional(NT("floating-point-suffix"))),
-      Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-digit-sequence"), NT("binary-exponent-part"), Optional(NT("floating-point-suffix")))
-    )
+      NT("hexadecimal-fractional-constant"),
+      NT("hexadecimal-digit-sequence")
+    ),
+    NT("binary-exponent-part"),
+    Optional(NT("floating-point-suffix"))
   )
 );
 
@@ -546,13 +542,17 @@ rules.set("hexadecimal-fractional-constant", () =>
 
 rules.set("exponent-part", () =>
   Diagram(
-    Sequence(Choice(0, T("e"), T("E")), Optional(NT("sign")), NT("digit-sequence"))
+    Choice(0, T("e"), T("E")),
+    Optional(NT("sign")),
+    NT("digit-sequence")
   )
 );
 
 rules.set("binary-exponent-part", () =>
   Diagram(
-    Sequence(Choice(0, T("p"), T("P")), Optional(NT("sign")), NT("digit-sequence"))
+    Choice(0, T("p"), T("P")),
+    Optional(NT("sign")),
+    NT("digit-sequence")
   )
 );
 
@@ -562,7 +562,8 @@ rules.set("sign", () =>
 
 rules.set("digit-sequence", () =>
   Diagram(
-    Sequence(NT("digit"), ZeroOrMore(Sequence(Optional(T("'")), NT("digit"))))
+    NT("digit"),
+    ZeroOrMore(Sequence(Optional(T("'")), NT("digit")))
   )
 );
 
@@ -577,9 +578,10 @@ rules.set("floating-point-suffix", () =>
 
 rules.set("string-literal", () =>
   Diagram(
+    Optional(NT("encoding-prefix")),
     Choice(0,
-      Sequence(Optional(NT("encoding-prefix")), T('"'), Optional(NT("s-char-sequence")), T('"')),
-      Sequence(Optional(NT("encoding-prefix")), T("R"), NT("raw-string"))
+      Sequence(T('"'), Optional(NT("s-char-sequence")), T('"')),
+      Sequence(T("R"), NT("raw-string"))
     )
   )
 );
@@ -599,20 +601,18 @@ rules.set("s-char", () =>
 );
 
 rules.set("basic-s-char", () =>
-  Diagram(Comment('any char except ", \\, or new-line'))
+  Diagram(Comment('any character except ", \\, or new-line'))
 );
 
 rules.set("raw-string", () =>
   Diagram(
-    Sequence(
-      T('"'),
-      Optional(NT("d-char-sequence")),
-      T("("),
-      Optional(NT("r-char-sequence")),
-      T(")"),
-      Optional(NT("d-char-sequence")),
-      T('"')
-    )
+    T('"'),
+    Optional(NT("d-char-sequence")),
+    T("("),
+    Optional(NT("r-char-sequence")),
+    T(")"),
+    Optional(NT("d-char-sequence")),
+    T('"')
   )
 );
 
@@ -621,7 +621,7 @@ rules.set("r-char-sequence", () =>
 );
 
 rules.set("r-char", () =>
-  Diagram(Comment("any char except ) + d-char-seq + \""))
+  Diagram(Comment("any character except ) followed by d-char-sequence and \""))
 );
 
 rules.set("d-char-sequence", () =>
@@ -629,15 +629,15 @@ rules.set("d-char-sequence", () =>
 );
 
 rules.set("d-char", () =>
-  Diagram(Comment("basic char except space/parens/\\/tabs/newline"))
+  Diagram(Comment("any basic char except space, (, ), \\, tab, newline"))
 );
 
 rules.set("boolean-literal", () =>
-  Diagram(Choice(0, K("false"), K("true")))
+  Diagram(Choice(0, T("false"), T("true")))
 );
 
 rules.set("pointer-literal", () =>
-  Diagram(K("nullptr"))
+  Diagram(T("nullptr"))
 );
 
 rules.set("user-defined-literal", () =>
@@ -653,30 +653,34 @@ rules.set("user-defined-literal", () =>
 
 rules.set("user-defined-integer-literal", () =>
   Diagram(
-    Sequence(
-      Choice(0, NT("decimal-literal"), NT("octal-literal"), NT("hexadecimal-literal"), NT("binary-literal")),
-      NT("ud-suffix")
-    )
+    Choice(0,
+      NT("decimal-literal"),
+      NT("octal-literal"),
+      NT("hexadecimal-literal"),
+      NT("binary-literal")
+    ),
+    NT("ud-suffix")
   )
 );
 
 rules.set("user-defined-floating-point-literal", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("fractional-constant"), Optional(NT("exponent-part")), NT("ud-suffix")),
-      Sequence(NT("digit-sequence"), NT("exponent-part"), NT("ud-suffix")),
-      Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-fractional-constant"), NT("binary-exponent-part"), NT("ud-suffix")),
-      Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-digit-sequence"), NT("binary-exponent-part"), NT("ud-suffix"))
-    )
+      Sequence(NT("fractional-constant"), Optional(NT("exponent-part"))),
+      Sequence(NT("digit-sequence"), NT("exponent-part")),
+      Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-fractional-constant"), NT("binary-exponent-part")),
+      Sequence(NT("hexadecimal-prefix"), NT("hexadecimal-digit-sequence"), NT("binary-exponent-part"))
+    ),
+    NT("ud-suffix")
   )
 );
 
 rules.set("user-defined-string-literal", () =>
-  Diagram(Sequence(NT("string-literal"), NT("ud-suffix")))
+  Diagram(NT("string-literal"), NT("ud-suffix"))
 );
 
 rules.set("user-defined-character-literal", () =>
-  Diagram(Sequence(NT("character-literal"), NT("ud-suffix")))
+  Diagram(NT("character-literal"), NT("ud-suffix"))
 );
 
 rules.set("ud-suffix", () =>
@@ -705,7 +709,7 @@ rules.set("primary-expression", () =>
   Diagram(
     Choice(0,
       NT("literal"),
-      K("this"),
+      T("this"),
       Sequence(T("("), NT("expression"), T(")")),
       NT("id-expression"),
       NT("lambda-expression"),
@@ -740,24 +744,24 @@ rules.set("unqualified-id", () =>
 
 rules.set("qualified-id", () =>
   Diagram(
-    Sequence(NT("nested-name-specifier"), Optional(K("template")), NT("unqualified-id"))
+    NT("nested-name-specifier"),
+    Optional(T("template")),
+    NT("unqualified-id")
   )
 );
 
 rules.set("nested-name-specifier", () =>
   Diagram(
-    Sequence(
+    Choice(0,
+      T("::"),
+      Sequence(NT("type-name"), T("::")),
+      Sequence(NT("namespace-name"), T("::")),
+      Sequence(NT("decltype-specifier"), T("::"))
+    ),
+    ZeroOrMore(
       Choice(0,
-        T("::"),
-        Sequence(NT("type-name"), T("::")),
-        Sequence(NT("namespace-name"), T("::")),
-        Sequence(NT("decltype-specifier"), T("::"))
-      ),
-      ZeroOrMore(
-        Choice(0,
-          Sequence(NT("identifier"), T("::")),
-          Sequence(Optional(K("template")), NT("simple-template-id"), T("::"))
-        )
+        Sequence(NT("identifier"), T("::")),
+        Sequence(Optional(T("template")), NT("simple-template-id"), T("::"))
       )
     )
   )
@@ -765,34 +769,38 @@ rules.set("nested-name-specifier", () =>
 
 rules.set("lambda-expression", () =>
   Diagram(
-    Choice(0,
-      Sequence(NT("lambda-introducer"), Optional(NT("attribute-specifier-seq")), NT("lambda-declarator"), NT("compound-statement")),
+    NT("lambda-introducer"),
+    Optional(
       Sequence(
-        NT("lambda-introducer"),
         T("<"),
         NT("template-parameter-list"),
         T(">"),
-        Optional(NT("requires-clause")),
-        Optional(NT("attribute-specifier-seq")),
-        NT("lambda-declarator"),
-        NT("compound-statement")
+        Optional(NT("requires-clause"))
       )
-    )
+    ),
+    Optional(NT("attribute-specifier-seq")),
+    NT("lambda-declarator"),
+    NT("compound-statement")
   )
 );
 
 rules.set("lambda-introducer", () =>
   Diagram(
-    Sequence(T("["), Optional(NT("lambda-capture")), T("]"))
+    T("["),
+    Optional(NT("lambda-capture")),
+    T("]")
   )
 );
 
 rules.set("lambda-declarator", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("lambda-specifier-seq"), Optional(NT("noexcept-specifier")), Optional(NT("attribute-specifier-seq")), Optional(NT("trailing-return-type"))),
-      Sequence(NT("noexcept-specifier"), Optional(NT("attribute-specifier-seq")), Optional(NT("trailing-return-type"))),
-      Optional(NT("trailing-return-type")),
+      Sequence(
+        Optional(NT("lambda-specifier-seq")),
+        Optional(NT("noexcept-specifier")),
+        Optional(NT("attribute-specifier-seq")),
+        Optional(NT("trailing-return-type"))
+      ),
       Sequence(
         T("("),
         NT("parameter-declaration-clause"),
@@ -809,7 +817,12 @@ rules.set("lambda-declarator", () =>
 
 rules.set("lambda-specifier", () =>
   Diagram(
-    Choice(0, K("consteval"), K("constexpr"), K("mutable"), K("static"))
+    Choice(0,
+      T("consteval"),
+      T("constexpr"),
+      T("mutable"),
+      T("static")
+    )
   )
 );
 
@@ -833,7 +846,8 @@ rules.set("capture-default", () =>
 
 rules.set("capture-list", () =>
   Diagram(
-    Sequence(NT("capture"), ZeroOrMore(Sequence(T(","), NT("capture"))))
+    NT("capture"),
+    ZeroOrMore(Sequence(T(","), NT("capture")))
   )
 );
 
@@ -851,56 +865,66 @@ rules.set("simple-capture", () =>
     Choice(0,
       Sequence(NT("identifier"), Optional(T("..."))),
       Sequence(T("&"), NT("identifier"), Optional(T("..."))),
-      K("this"),
-      Sequence(T("*"), K("this"))
+      T("this"),
+      Sequence(T("*"), T("this"))
     )
   )
 );
 
 rules.set("init-capture", () =>
   Diagram(
-    Choice(0,
-      Sequence(Optional(T("...")), NT("identifier"), NT("initializer")),
-      Sequence(T("&"), Optional(T("...")), NT("identifier"), NT("initializer"))
-    )
+    Optional(T("...")),
+    Optional(T("&")),
+    NT("identifier"),
+    NT("initializer")
   )
 );
 
 rules.set("fold-expression", () =>
   Diagram(
+    T("("),
     Choice(0,
-      Sequence(T("("), NT("cast-expression"), NT("fold-operator"), T("..."), T(")")),
-      Sequence(T("("), T("..."), NT("fold-operator"), NT("cast-expression"), T(")")),
-      Sequence(T("("), NT("cast-expression"), NT("fold-operator"), T("..."), NT("fold-operator"), NT("cast-expression"), T(")"))
-    )
+      Sequence(NT("cast-expression"), NT("fold-operator"), T("...")),
+      Sequence(T("..."), NT("fold-operator"), NT("cast-expression")),
+      Sequence(NT("cast-expression"), NT("fold-operator"), T("..."), NT("fold-operator"), NT("cast-expression"))
+    ),
+    T(")")
   )
 );
 
 rules.set("fold-operator", () =>
   Diagram(
     Choice(0,
-      T("+"), T("-"), T("*"), T("/"), T("%"), T("^"), T("&"), T("|"), T("<<"), T(">>"),
-      T("+="), T("-="), T("*="), T("/="), T("%="), T("^="), T("&="), T("|="), T("<<="), T(">>="), T("="),
-      T("=="), T("!="), T("<"), T(">"), T("<="), T(">="), T("&&"), T("||"), T(","), T(".*"), T("->*")
+      T("+"), T("-"), T("*"), T("/"), T("%"), T("^"), T("&"), T("|"),
+      T("<<"), T(">>"), T("+="), T("-="), T("*="), T("/="), T("%="),
+      T("^="), T("&="), T("|="), T("<<="), T(">>="), T("="),
+      T("=="), T("!="), T("<"), T(">"), T("<="), T(">="),
+      T("&&"), T("||"), T(","), T(".*"), T("->*")
     )
   )
 );
 
 rules.set("requires-expression", () =>
   Diagram(
-    Sequence(K("requires"), Optional(NT("requirement-parameter-list")), NT("requirement-body"))
+    T("requires"),
+    Optional(NT("requirement-parameter-list")),
+    NT("requirement-body")
   )
 );
 
 rules.set("requirement-parameter-list", () =>
   Diagram(
-    Sequence(T("("), NT("parameter-declaration-clause"), T(")"))
+    T("("),
+    NT("parameter-declaration-clause"),
+    T(")")
   )
 );
 
 rules.set("requirement-body", () =>
   Diagram(
-    Sequence(T("{"), NT("requirement-seq"), T("}"))
+    T("{"),
+    NT("requirement-seq"),
+    T("}")
   )
 );
 
@@ -920,59 +944,63 @@ rules.set("requirement", () =>
 );
 
 rules.set("simple-requirement", () =>
-  Diagram(Sequence(NT("expression"), T(";")))
+  Diagram(NT("expression"), T(";"))
 );
 
 rules.set("type-requirement", () =>
   Diagram(
-    Sequence(K("typename"), Optional(NT("nested-name-specifier")), NT("type-name"), T(";"))
+    T("typename"),
+    Optional(NT("nested-name-specifier")),
+    NT("type-name"),
+    T(";")
   )
 );
 
 rules.set("compound-requirement", () =>
   Diagram(
-    Sequence(
-      T("{"),
-      NT("expression"),
-      T("}"),
-      Optional(K("noexcept")),
-      Optional(NT("return-type-requirement")),
-      T(";")
-    )
+    T("{"),
+    NT("expression"),
+    T("}"),
+    Optional(T("noexcept")),
+    Optional(NT("return-type-requirement")),
+    T(";")
   )
 );
 
 rules.set("return-type-requirement", () =>
-  Diagram(Sequence(T("->"), NT("type-constraint")))
+  Diagram(T("->"), NT("type-constraint"))
 );
 
 rules.set("nested-requirement", () =>
-  Diagram(Sequence(K("requires"), NT("constraint-expression"), T(";")))
+  Diagram(T("requires"), NT("constraint-expression"), T(";"))
 );
 
-rules.set("postfix-expression", () =>
-  Diagram(
+rules.set("postfix-expression", () => {
+  const postfixSuffix = Choice(0,
+    Sequence(T("["), Optional(NT("expression-list")), T("]")),
+    Sequence(T("("), Optional(NT("expression-list")), T(")")),
+    Sequence(T("."), Optional(T("template")), NT("id-expression")),
+    Sequence(T("->"), Optional(T("template")), NT("id-expression")),
+    T("++"),
+    T("--")
+  );
+
+  return Diagram(
     Choice(0,
       NT("primary-expression"),
-      Sequence(NT("postfix-expression"), T("["), Optional(NT("expression-list")), T("]")),
-      Sequence(NT("postfix-expression"), T("("), Optional(NT("expression-list")), T(")")),
       Sequence(NT("simple-type-specifier"), T("("), Optional(NT("expression-list")), T(")")),
       Sequence(NT("typename-specifier"), T("("), Optional(NT("expression-list")), T(")")),
       Sequence(NT("simple-type-specifier"), NT("braced-init-list")),
       Sequence(NT("typename-specifier"), NT("braced-init-list")),
-      Sequence(NT("postfix-expression"), T("."), Optional(K("template")), NT("id-expression")),
-      Sequence(NT("postfix-expression"), T("->"), Optional(K("template")), NT("id-expression")),
-      Sequence(NT("postfix-expression"), T("++")),
-      Sequence(NT("postfix-expression"), T("--")),
-      Sequence(K("dynamic_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
-      Sequence(K("static_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
-      Sequence(K("reinterpret_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
-      Sequence(K("const_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
-      Sequence(K("typeid"), T("("), NT("expression"), T(")")),
-      Sequence(K("typeid"), T("("), NT("type-id"), T(")"))
-    )
-  )
-);
+      Sequence(T("dynamic_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
+      Sequence(T("static_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
+      Sequence(T("reinterpret_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
+      Sequence(T("const_cast"), T("<"), NT("type-id"), T(">"), T("("), NT("expression"), T(")")),
+      Sequence(T("typeid"), T("("), Choice(0, NT("expression"), NT("type-id")), T(")"))
+    ),
+    ZeroOrMore(postfixSuffix)
+  );
+});
 
 rules.set("expression-list", () =>
   Diagram(NT("initializer-list"))
@@ -986,10 +1014,10 @@ rules.set("unary-expression", () =>
       Sequence(T("++"), NT("cast-expression")),
       Sequence(T("--"), NT("cast-expression")),
       NT("await-expression"),
-      Sequence(K("sizeof"), NT("unary-expression")),
-      Sequence(K("sizeof"), T("("), NT("type-id"), T(")")),
-      Sequence(K("sizeof"), T("..."), T("("), NT("identifier"), T(")")),
-      Sequence(K("alignof"), T("("), NT("type-id"), T(")")),
+      Sequence(T("sizeof"), NT("unary-expression")),
+      Sequence(T("sizeof"), T("("), NT("type-id"), T(")")),
+      Sequence(T("sizeof"), T("..."), T("("), NT("identifier"), T(")")),
+      Sequence(T("alignof"), T("("), NT("type-id"), T(")")),
       NT("noexcept-expression"),
       NT("new-expression"),
       NT("delete-expression")
@@ -1002,31 +1030,32 @@ rules.set("unary-operator", () =>
 );
 
 rules.set("await-expression", () =>
-  Diagram(Sequence(K("co_await"), NT("cast-expression")))
+  Diagram(T("co_await"), NT("cast-expression"))
 );
 
 rules.set("noexcept-expression", () =>
-  Diagram(Sequence(K("noexcept"), T("("), NT("expression"), T(")")))
+  Diagram(T("noexcept"), T("("), NT("expression"), T(")"))
 );
 
 rules.set("new-expression", () =>
   Diagram(
-    Sequence(
-      Optional(T("::")),
-      K("new"),
-      Optional(NT("new-placement")),
-      Choice(0, NT("new-type-id"), Sequence(T("("), NT("type-id"), T(")"))),
-      Optional(NT("new-initializer"))
-    )
+    Optional(T("::")),
+    T("new"),
+    Optional(NT("new-placement")),
+    Choice(0,
+      NT("new-type-id"),
+      Sequence(T("("), NT("type-id"), T(")"))
+    ),
+    Optional(NT("new-initializer"))
   )
 );
 
 rules.set("new-placement", () =>
-  Diagram(Sequence(T("("), NT("expression-list"), T(")")))
+  Diagram(T("("), NT("expression-list"), T(")"))
 );
 
 rules.set("new-type-id", () =>
-  Diagram(Sequence(NT("type-specifier-seq"), Optional(NT("new-declarator"))))
+  Diagram(NT("type-specifier-seq"), Optional(NT("new-declarator")))
 );
 
 rules.set("new-declarator", () =>
@@ -1040,12 +1069,12 @@ rules.set("new-declarator", () =>
 
 rules.set("noptr-new-declarator", () =>
   Diagram(
-    Sequence(
-      T("["),
-      Optional(NT("expression")),
-      T("]"),
-      Optional(NT("attribute-specifier-seq")),
-      ZeroOrMore(Sequence(T("["), NT("constant-expression"), T("]"), Optional(NT("attribute-specifier-seq"))))
+    T("["),
+    Optional(NT("expression")),
+    T("]"),
+    Optional(NT("attribute-specifier-seq")),
+    ZeroOrMore(
+      Sequence(T("["), NT("constant-expression"), T("]"), Optional(NT("attribute-specifier-seq")))
     )
   )
 );
@@ -1061,152 +1090,68 @@ rules.set("new-initializer", () =>
 
 rules.set("delete-expression", () =>
   Diagram(
-    Sequence(
-      Optional(T("::")),
-      K("delete"),
-      Optional(Sequence(T("["), T("]"))),
-      NT("cast-expression")
-    )
+    Optional(T("::")),
+    T("delete"),
+    Optional(Sequence(T("["), T("]"))),
+    NT("cast-expression")
   )
 );
 
 rules.set("cast-expression", () =>
   Diagram(
-    Choice(0,
-      NT("unary-expression"),
-      Sequence(T("("), NT("type-id"), T(")"), NT("cast-expression"))
-    )
+    ZeroOrMore(Sequence(T("("), NT("type-id"), T(")"))),
+    NT("unary-expression")
   )
 );
 
 rules.set("pm-expression", () =>
   Diagram(
-    Sequence(
-      NT("cast-expression"),
-      ZeroOrMore(Sequence(Choice(0, T(".*"), T("->*")), NT("cast-expression")))
+    NT("cast-expression"),
+    ZeroOrMore(
+      Sequence(Choice(0, T(".*"), T("->*")), NT("cast-expression"))
     )
   )
 );
 
-rules.set("multiplicative-expression", () =>
-  Diagram(
-    Sequence(
-      NT("pm-expression"),
-      ZeroOrMore(Sequence(Choice(0, T("*"), T("/"), T("%")), NT("pm-expression")))
-    )
-  )
-);
+// precedence-chain helper
+function chain(base: string, ops: string[]) {
+  return Sequence(
+    NT(base),
+    ZeroOrMore(Sequence(Choice(0, ...ops.map(T)), NT(base)))
+  );
+}
 
-rules.set("additive-expression", () =>
-  Diagram(
-    Sequence(
-      NT("multiplicative-expression"),
-      ZeroOrMore(Sequence(Choice(0, T("+"), T("-")), NT("multiplicative-expression")))
-    )
-  )
-);
-
-rules.set("shift-expression", () =>
-  Diagram(
-    Sequence(
-      NT("additive-expression"),
-      ZeroOrMore(Sequence(Choice(0, T("<<"), T(">>")), NT("additive-expression")))
-    )
-  )
-);
-
-rules.set("compare-expression", () =>
-  Diagram(
-    Sequence(
-      NT("shift-expression"),
-      ZeroOrMore(Sequence(T("<=>"), NT("shift-expression")))
-    )
-  )
-);
-
-rules.set("relational-expression", () =>
-  Diagram(
-    Sequence(
-      NT("compare-expression"),
-      ZeroOrMore(Sequence(Choice(0, T("<"), T(">"), T("<="), T(">=")), NT("compare-expression")))
-    )
-  )
-);
-
-rules.set("equality-expression", () =>
-  Diagram(
-    Sequence(
-      NT("relational-expression"),
-      ZeroOrMore(Sequence(Choice(0, T("=="), T("!=")), NT("relational-expression")))
-    )
-  )
-);
-
-rules.set("and-expression", () =>
-  Diagram(
-    Sequence(
-      NT("equality-expression"),
-      ZeroOrMore(Sequence(T("&"), NT("equality-expression")))
-    )
-  )
-);
-
-rules.set("exclusive-or-expression", () =>
-  Diagram(
-    Sequence(
-      NT("and-expression"),
-      ZeroOrMore(Sequence(T("^"), NT("and-expression")))
-    )
-  )
-);
-
-rules.set("inclusive-or-expression", () =>
-  Diagram(
-    Sequence(
-      NT("exclusive-or-expression"),
-      ZeroOrMore(Sequence(T("|"), NT("exclusive-or-expression")))
-    )
-  )
-);
-
-rules.set("logical-and-expression", () =>
-  Diagram(
-    Sequence(
-      NT("inclusive-or-expression"),
-      ZeroOrMore(Sequence(T("&&"), NT("inclusive-or-expression")))
-    )
-  )
-);
-
-rules.set("logical-or-expression", () =>
-  Diagram(
-    Sequence(
-      NT("logical-and-expression"),
-      ZeroOrMore(Sequence(T("||"), NT("logical-and-expression")))
-    )
-  )
-);
+rules.set("multiplicative-expression", () => Diagram(chain("pm-expression", ["*", "/", "%"])));
+rules.set("additive-expression", () => Diagram(chain("multiplicative-expression", ["+", "-"])));
+rules.set("shift-expression", () => Diagram(chain("additive-expression", ["<<", ">>"])));
+rules.set("compare-expression", () => Diagram(chain("shift-expression", ["<=>"])));
+rules.set("relational-expression", () => Diagram(chain("compare-expression", ["<", ">", "<=", ">="])));
+rules.set("equality-expression", () => Diagram(chain("relational-expression", ["==", "!="])));
+rules.set("and-expression", () => Diagram(chain("equality-expression", ["&"])));
+rules.set("exclusive-or-expression", () => Diagram(chain("and-expression", ["^"])));
+rules.set("inclusive-or-expression", () => Diagram(chain("exclusive-or-expression", ["|"])));
+rules.set("logical-and-expression", () => Diagram(chain("inclusive-or-expression", ["&&"])));
+rules.set("logical-or-expression", () => Diagram(chain("logical-and-expression", ["||"])));
 
 rules.set("conditional-expression", () =>
   Diagram(
-    Choice(0,
-      NT("logical-or-expression"),
-      Sequence(NT("logical-or-expression"), T("?"), NT("expression"), T(":"), NT("assignment-expression"))
-    )
+    NT("logical-or-expression"),
+    Optional(Sequence(T("?"), NT("expression"), T(":"), NT("assignment-expression")))
   )
 );
 
 rules.set("yield-expression", () =>
   Diagram(
+    T("co_yield"),
     Choice(0,
-      Sequence(K("co_yield"), NT("assignment-expression")),
-      Sequence(K("co_yield"), NT("braced-init-list"))
+      NT("assignment-expression"),
+      NT("braced-init-list")
     )
   )
 );
 
 rules.set("throw-expression", () =>
-  Diagram(Sequence(K("throw"), Optional(NT("assignment-expression"))))
+  Diagram(T("throw"), Optional(NT("assignment-expression")))
 );
 
 rules.set("assignment-expression", () =>
@@ -1231,10 +1176,8 @@ rules.set("assignment-operator", () =>
 
 rules.set("expression", () =>
   Diagram(
-    Sequence(
-      NT("assignment-expression"),
-      ZeroOrMore(Sequence(T(","), NT("assignment-expression")))
-    )
+    NT("assignment-expression"),
+    ZeroOrMore(Sequence(T(","), NT("assignment-expression")))
   )
 );
 
@@ -1273,35 +1216,41 @@ rules.set("condition", () =>
   Diagram(
     Choice(0,
       NT("expression"),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("decl-specifier-seq"), NT("declarator"), NT("brace-or-equal-initializer"))
+      Sequence(
+        Optional(NT("attribute-specifier-seq")),
+        NT("decl-specifier-seq"),
+        NT("declarator"),
+        NT("brace-or-equal-initializer")
+      )
     )
   )
 );
 
 rules.set("label", () =>
   Diagram(
-    Sequence(
-      Optional(NT("attribute-specifier-seq")),
-      Choice(0,
-        Sequence(NT("identifier"), T(":")),
-        Sequence(K("case"), NT("constant-expression"), T(":")),
-        Sequence(K("default"), T(":"))
-      )
+    Optional(NT("attribute-specifier-seq")),
+    Choice(0,
+      Sequence(NT("identifier"), T(":")),
+      Sequence(T("case"), NT("constant-expression"), T(":")),
+      Sequence(T("default"), T(":"))
     )
   )
 );
 
 rules.set("labeled-statement", () =>
-  Diagram(Sequence(NT("label"), NT("statement")))
+  Diagram(NT("label"), NT("statement"))
 );
 
 rules.set("expression-statement", () =>
-  Diagram(Sequence(Optional(NT("expression")), T(";")))
+  Diagram(Optional(NT("expression")), T(";"))
 );
 
 rules.set("compound-statement", () =>
   Diagram(
-    Sequence(T("{"), Optional(NT("statement-seq")), Optional(NT("label-seq")), T("}"))
+    T("{"),
+    Optional(NT("statement-seq")),
+    Optional(NT("label-seq")),
+    T("}")
   )
 );
 
@@ -1316,11 +1265,31 @@ rules.set("label-seq", () =>
 rules.set("selection-statement", () =>
   Diagram(
     Choice(0,
-      Sequence(K("if"), Optional(K("constexpr")), T("("), Optional(NT("init-statement")), NT("condition"), T(")"), NT("statement")),
-      Sequence(K("if"), Optional(K("constexpr")), T("("), Optional(NT("init-statement")), NT("condition"), T(")"), NT("statement"), K("else"), NT("statement")),
-      Sequence(K("if"), Optional(T("!")), K("consteval"), NT("compound-statement")),
-      Sequence(K("if"), Optional(T("!")), K("consteval"), NT("compound-statement"), K("else"), NT("statement")),
-      Sequence(K("switch"), T("("), Optional(NT("init-statement")), NT("condition"), T(")"), NT("statement"))
+      Sequence(
+        T("if"),
+        Optional(T("constexpr")),
+        T("("),
+        Optional(NT("init-statement")),
+        NT("condition"),
+        T(")"),
+        NT("statement"),
+        Optional(Sequence(T("else"), NT("statement")))
+      ),
+      Sequence(
+        T("if"),
+        Optional(T("!")),
+        T("consteval"),
+        NT("compound-statement"),
+        Optional(Sequence(T("else"), NT("statement")))
+      ),
+      Sequence(
+        T("switch"),
+        T("("),
+        Optional(NT("init-statement")),
+        NT("condition"),
+        T(")"),
+        NT("statement")
+      )
     )
   )
 );
@@ -1328,19 +1297,39 @@ rules.set("selection-statement", () =>
 rules.set("iteration-statement", () =>
   Diagram(
     Choice(0,
-      Sequence(K("while"), T("("), NT("condition"), T(")"), NT("statement")),
-      Sequence(K("do"), NT("statement"), K("while"), T("("), NT("expression"), T(")"), T(";")),
-      Sequence(K("for"), T("("), NT("init-statement"), Optional(NT("condition")), T(";"), Optional(NT("expression")), T(")"), NT("statement")),
-      Sequence(K("for"), T("("), Optional(NT("init-statement")), NT("for-range-declaration"), T(":"), NT("for-range-initializer"), T(")"), NT("statement"))
+      Sequence(T("while"), T("("), NT("condition"), T(")"), NT("statement")),
+      Sequence(T("do"), NT("statement"), T("while"), T("("), NT("expression"), T(")"), T(";")),
+      Sequence(
+        T("for"),
+        T("("),
+        NT("init-statement"),
+        Optional(NT("condition")),
+        T(";"),
+        Optional(NT("expression")),
+        T(")"),
+        NT("statement")
+      ),
+      Sequence(
+        T("for"),
+        T("("),
+        Optional(NT("init-statement")),
+        NT("for-range-declaration"),
+        T(":"),
+        NT("for-range-initializer"),
+        T(")"),
+        NT("statement")
+      )
     )
   )
 );
 
 rules.set("for-range-declaration", () =>
   Diagram(
+    Optional(NT("attribute-specifier-seq")),
+    NT("decl-specifier-seq"),
     Choice(0,
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("decl-specifier-seq"), NT("declarator")),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("decl-specifier-seq"), Optional(NT("ref-qualifier")), T("["), NT("identifier-list"), T("]"))
+      NT("declarator"),
+      Sequence(Optional(NT("ref-qualifier")), T("["), NT("identifier-list"), T("]"))
     )
   )
 );
@@ -1352,17 +1341,17 @@ rules.set("for-range-initializer", () =>
 rules.set("jump-statement", () =>
   Diagram(
     Choice(0,
-      Sequence(K("break"), T(";")),
-      Sequence(K("continue"), T(";")),
-      Sequence(K("return"), Optional(NT("expr-or-braced-init-list")), T(";")),
+      Sequence(T("break"), T(";")),
+      Sequence(T("continue"), T(";")),
+      Sequence(T("return"), Optional(NT("expr-or-braced-init-list")), T(";")),
       NT("coroutine-return-statement"),
-      Sequence(K("goto"), NT("identifier"), T(";"))
+      Sequence(T("goto"), NT("identifier"), T(";"))
     )
   )
 );
 
 rules.set("coroutine-return-statement", () =>
-  Diagram(Sequence(K("co_return"), Optional(NT("expr-or-braced-init-list")), T(";")))
+  Diagram(T("co_return"), Optional(NT("expr-or-braced-init-list")), T(";"))
 );
 
 rules.set("declaration-statement", () =>
@@ -1429,13 +1418,20 @@ rules.set("block-declaration", () =>
 
 rules.set("nodeclspec-function-declaration", () =>
   Diagram(
-    Sequence(Optional(NT("attribute-specifier-seq")), NT("declarator"), T(";"))
+    Optional(NT("attribute-specifier-seq")),
+    NT("declarator"),
+    T(";")
   )
 );
 
 rules.set("alias-declaration", () =>
   Diagram(
-    Sequence(K("using"), NT("identifier"), Optional(NT("attribute-specifier-seq")), T("="), NT("defining-type-id"), T(";"))
+    T("using"),
+    NT("identifier"),
+    Optional(NT("attribute-specifier-seq")),
+    T("="),
+    NT("defining-type-id"),
+    T(";")
   )
 );
 
@@ -1444,17 +1440,28 @@ rules.set("simple-declaration", () =>
     Choice(0,
       Sequence(NT("decl-specifier-seq"), Optional(NT("init-declarator-list")), T(";")),
       Sequence(NT("attribute-specifier-seq"), NT("decl-specifier-seq"), NT("init-declarator-list"), T(";")),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("decl-specifier-seq"), Optional(NT("ref-qualifier")), T("["), NT("identifier-list"), T("]"), NT("initializer"), T(";"))
+      Sequence(
+        Optional(NT("attribute-specifier-seq")),
+        NT("decl-specifier-seq"),
+        Optional(NT("ref-qualifier")),
+        T("["),
+        NT("identifier-list"),
+        T("]"),
+        NT("initializer"),
+        T(";")
+      )
     )
   )
 );
 
 rules.set("static_assert-declaration", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("static_assert"), T("("), NT("constant-expression"), T(")"), T(";")),
-      Sequence(K("static_assert"), T("("), NT("constant-expression"), T(","), NT("string-literal"), T(")"), T(";"))
-    )
+    T("static_assert"),
+    T("("),
+    NT("constant-expression"),
+    Optional(Sequence(T(","), NT("string-literal"))),
+    T(")"),
+    T(";")
   )
 );
 
@@ -1463,7 +1470,7 @@ rules.set("empty-declaration", () =>
 );
 
 rules.set("attribute-declaration", () =>
-  Diagram(Sequence(NT("attribute-specifier-seq"), T(";")))
+  Diagram(NT("attribute-specifier-seq"), T(";"))
 );
 
 rules.set("decl-specifier", () =>
@@ -1472,40 +1479,50 @@ rules.set("decl-specifier", () =>
       NT("storage-class-specifier"),
       NT("defining-type-specifier"),
       NT("function-specifier"),
-      K("friend"),
-      K("typedef"),
-      K("constexpr"),
-      K("consteval"),
-      K("constinit"),
-      K("inline")
+      T("friend"),
+      T("typedef"),
+      T("constexpr"),
+      T("consteval"),
+      T("constinit"),
+      T("inline")
     )
   )
 );
 
 rules.set("decl-specifier-seq", () =>
   Diagram(
-    OneOrMore(Sequence(NT("decl-specifier"), Optional(NT("attribute-specifier-seq"))))
+    NT("decl-specifier"),
+    Choice(0,
+      Optional(NT("attribute-specifier-seq")),
+      NT("decl-specifier-seq")
+    )
   )
 );
 
 rules.set("storage-class-specifier", () =>
   Diagram(
-    Choice(0, K("static"), K("thread_local"), K("extern"), K("mutable"))
+    Choice(0,
+      T("static"),
+      T("thread_local"),
+      T("extern"),
+      T("mutable")
+    )
   )
 );
 
 rules.set("function-specifier", () =>
   Diagram(
-    Choice(0, K("virtual"), NT("explicit-specifier"))
+    Choice(0,
+      T("virtual"),
+      NT("explicit-specifier")
+    )
   )
 );
 
 rules.set("explicit-specifier", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("explicit"), T("("), NT("constant-expression"), T(")")),
-      K("explicit")
-    )
+    T("explicit"),
+    Optional(Sequence(T("("), NT("constant-expression"), T(")")))
   )
 );
 
@@ -1522,7 +1539,11 @@ rules.set("type-specifier", () =>
 
 rules.set("type-specifier-seq", () =>
   Diagram(
-    OneOrMore(Sequence(NT("type-specifier"), Optional(NT("attribute-specifier-seq"))))
+    NT("type-specifier"),
+    Choice(0,
+      Optional(NT("attribute-specifier-seq")),
+      NT("type-specifier-seq")
+    )
   )
 );
 
@@ -1538,7 +1559,11 @@ rules.set("defining-type-specifier", () =>
 
 rules.set("defining-type-specifier-seq", () =>
   Diagram(
-    OneOrMore(Sequence(NT("defining-type-specifier"), Optional(NT("attribute-specifier-seq"))))
+    NT("defining-type-specifier"),
+    Choice(0,
+      Optional(NT("attribute-specifier-seq")),
+      NT("defining-type-specifier-seq")
+    )
   )
 );
 
@@ -1546,13 +1571,13 @@ rules.set("simple-type-specifier", () =>
   Diagram(
     Choice(0,
       Sequence(Optional(NT("nested-name-specifier")), NT("type-name")),
-      Sequence(NT("nested-name-specifier"), K("template"), NT("simple-template-id")),
+      Sequence(NT("nested-name-specifier"), T("template"), NT("simple-template-id")),
       NT("decltype-specifier"),
       NT("placeholder-type-specifier"),
       Sequence(Optional(NT("nested-name-specifier")), NT("template-name")),
-      K("char"), K("char8_t"), K("char16_t"), K("char32_t"), K("wchar_t"),
-      K("bool"), K("short"), K("int"), K("long"), K("signed"), K("unsigned"),
-      K("float"), K("double"), K("void")
+      T("char"), T("char8_t"), T("char16_t"), T("char32_t"), T("wchar_t"),
+      T("bool"), T("short"), T("int"), T("long"),
+      T("signed"), T("unsigned"), T("float"), T("double"), T("void")
     )
   )
 );
@@ -1570,40 +1595,51 @@ rules.set("type-name", () =>
 rules.set("elaborated-type-specifier", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("class-key"), Optional(NT("attribute-specifier-seq")), Optional(NT("nested-name-specifier")), NT("identifier")),
+      Sequence(
+        NT("class-key"),
+        Optional(NT("attribute-specifier-seq")),
+        Optional(NT("nested-name-specifier")),
+        NT("identifier")
+      ),
       Sequence(NT("class-key"), NT("simple-template-id")),
-      Sequence(NT("class-key"), NT("nested-name-specifier"), Optional(K("template")), NT("simple-template-id")),
-      Sequence(K("enum"), Optional(NT("nested-name-specifier")), NT("identifier"))
+      Sequence(
+        NT("class-key"),
+        NT("nested-name-specifier"),
+        Optional(T("template")),
+        NT("simple-template-id")
+      ),
+      Sequence(T("enum"), Optional(NT("nested-name-specifier")), NT("identifier"))
     )
   )
 );
 
 rules.set("decltype-specifier", () =>
-  Diagram(
-    Sequence(K("decltype"), T("("), NT("expression"), T(")"))
-  )
+  Diagram(T("decltype"), T("("), NT("expression"), T(")"))
 );
 
 rules.set("placeholder-type-specifier", () =>
   Diagram(
+    Optional(NT("type-constraint")),
     Choice(0,
-      Sequence(Optional(NT("type-constraint")), K("auto")),
-      Sequence(Optional(NT("type-constraint")), K("decltype"), T("("), K("auto"), T(")"))
+      T("auto"),
+      Sequence(T("decltype"), T("("), T("auto"), T(")"))
     )
   )
 );
 
 rules.set("init-declarator-list", () =>
   Diagram(
-    Sequence(NT("init-declarator"), ZeroOrMore(Sequence(T(","), NT("init-declarator"))))
+    NT("init-declarator"),
+    ZeroOrMore(Sequence(T(","), NT("init-declarator")))
   )
 );
 
 rules.set("init-declarator", () =>
   Diagram(
+    NT("declarator"),
     Choice(0,
-      Sequence(NT("declarator"), Optional(NT("initializer"))),
-      Sequence(NT("declarator"), NT("requires-clause"))
+      Optional(NT("initializer")),
+      NT("requires-clause")
     )
   )
 );
@@ -1619,25 +1655,21 @@ rules.set("declarator", () =>
 
 rules.set("ptr-declarator", () =>
   Diagram(
-    Choice(0,
-      NT("noptr-declarator"),
-      Sequence(NT("ptr-operator"), NT("ptr-declarator"))
-    )
+    ZeroOrMore(NT("ptr-operator")),
+    NT("noptr-declarator")
   )
 );
 
 rules.set("noptr-declarator", () =>
   Diagram(
-    Sequence(
+    Choice(0,
+      Sequence(NT("declarator-id"), Optional(NT("attribute-specifier-seq"))),
+      Sequence(T("("), NT("ptr-declarator"), T(")"))
+    ),
+    ZeroOrMore(
       Choice(0,
-        Sequence(NT("declarator-id"), Optional(NT("attribute-specifier-seq"))),
-        Sequence(T("("), NT("ptr-declarator"), T(")"))
-      ),
-      ZeroOrMore(
-        Choice(0,
-          NT("parameters-and-qualifiers"),
-          Sequence(T("["), Optional(NT("constant-expression")), T("]"), Optional(NT("attribute-specifier-seq")))
-        )
+        NT("parameters-and-qualifiers"),
+        Sequence(T("["), Optional(NT("constant-expression")), T("]"), Optional(NT("attribute-specifier-seq")))
       )
     )
   )
@@ -1645,20 +1677,18 @@ rules.set("noptr-declarator", () =>
 
 rules.set("parameters-and-qualifiers", () =>
   Diagram(
-    Sequence(
-      T("("),
-      NT("parameter-declaration-clause"),
-      T(")"),
-      Optional(NT("cv-qualifier-seq")),
-      Optional(NT("ref-qualifier")),
-      Optional(NT("noexcept-specifier")),
-      Optional(NT("attribute-specifier-seq"))
-    )
+    T("("),
+    NT("parameter-declaration-clause"),
+    T(")"),
+    Optional(NT("cv-qualifier-seq")),
+    Optional(NT("ref-qualifier")),
+    Optional(NT("noexcept-specifier")),
+    Optional(NT("attribute-specifier-seq"))
   )
 );
 
 rules.set("trailing-return-type", () =>
-  Diagram(Sequence(T("->"), NT("type-id")))
+  Diagram(T("->"), NT("type-id"))
 );
 
 rules.set("ptr-operator", () =>
@@ -1677,7 +1707,7 @@ rules.set("cv-qualifier-seq", () =>
 );
 
 rules.set("cv-qualifier", () =>
-  Diagram(Choice(0, K("const"), K("volatile")))
+  Diagram(Choice(0, T("const"), T("volatile")))
 );
 
 rules.set("ref-qualifier", () =>
@@ -1685,19 +1715,15 @@ rules.set("ref-qualifier", () =>
 );
 
 rules.set("declarator-id", () =>
-  Diagram(Sequence(Optional(T("...")), NT("id-expression")))
+  Diagram(Optional(T("...")), NT("id-expression"))
 );
 
 rules.set("type-id", () =>
-  Diagram(
-    Sequence(NT("type-specifier-seq"), Optional(NT("abstract-declarator")))
-  )
+  Diagram(NT("type-specifier-seq"), Optional(NT("abstract-declarator")))
 );
 
 rules.set("defining-type-id", () =>
-  Diagram(
-    Sequence(NT("defining-type-specifier-seq"), Optional(NT("abstract-declarator")))
-  )
+  Diagram(NT("defining-type-specifier-seq"), Optional(NT("abstract-declarator")))
 );
 
 rules.set("abstract-declarator", () =>
@@ -1712,22 +1738,18 @@ rules.set("abstract-declarator", () =>
 
 rules.set("ptr-abstract-declarator", () =>
   Diagram(
-    Choice(0,
-      NT("noptr-abstract-declarator"),
-      Sequence(NT("ptr-operator"), Optional(NT("ptr-abstract-declarator")))
-    )
+    ZeroOrMore(NT("ptr-operator")),
+    Optional(NT("noptr-abstract-declarator"))
   )
 );
 
 rules.set("noptr-abstract-declarator", () =>
   Diagram(
-    Sequence(
-      Optional(Sequence(T("("), NT("ptr-abstract-declarator"), T(")"))),
-      ZeroOrMore(
-        Choice(0,
-          NT("parameters-and-qualifiers"),
-          Sequence(T("["), Optional(NT("constant-expression")), T("]"), Optional(NT("attribute-specifier-seq")))
-        )
+    Optional(Sequence(T("("), NT("ptr-abstract-declarator"), T(")"))),
+    ZeroOrMore(
+      Choice(0,
+        NT("parameters-and-qualifiers"),
+        Sequence(T("["), Optional(NT("constant-expression")), T("]"), Optional(NT("attribute-specifier-seq")))
       )
     )
   )
@@ -1735,22 +1757,18 @@ rules.set("noptr-abstract-declarator", () =>
 
 rules.set("abstract-pack-declarator", () =>
   Diagram(
-    Choice(0,
-      NT("noptr-abstract-pack-declarator"),
-      Sequence(NT("ptr-operator"), NT("abstract-pack-declarator"))
-    )
+    ZeroOrMore(NT("ptr-operator")),
+    NT("noptr-abstract-pack-declarator")
   )
 );
 
 rules.set("noptr-abstract-pack-declarator", () =>
   Diagram(
-    Sequence(
-      T("..."),
-      ZeroOrMore(
-        Choice(0,
-          NT("parameters-and-qualifiers"),
-          Sequence(T("["), Optional(NT("constant-expression")), T("]"), Optional(NT("attribute-specifier-seq")))
-        )
+    T("..."),
+    ZeroOrMore(
+      Choice(0,
+        NT("parameters-and-qualifiers"),
+        Sequence(T("["), Optional(NT("constant-expression")), T("]"), Optional(NT("attribute-specifier-seq")))
       )
     )
   )
@@ -1767,17 +1785,19 @@ rules.set("parameter-declaration-clause", () =>
 
 rules.set("parameter-declaration-list", () =>
   Diagram(
-    Sequence(NT("parameter-declaration"), ZeroOrMore(Sequence(T(","), NT("parameter-declaration"))))
+    NT("parameter-declaration"),
+    ZeroOrMore(Sequence(T(","), NT("parameter-declaration")))
   )
 );
 
 rules.set("parameter-declaration", () =>
   Diagram(
+    Optional(NT("attribute-specifier-seq")),
+    Optional(T("this")),
+    NT("decl-specifier-seq"),
     Choice(0,
-      Sequence(Optional(NT("attribute-specifier-seq")), Optional(K("this")), NT("decl-specifier-seq"), NT("declarator")),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("decl-specifier-seq"), NT("declarator"), T("="), NT("initializer-clause")),
-      Sequence(Optional(NT("attribute-specifier-seq")), Optional(K("this")), NT("decl-specifier-seq"), Optional(NT("abstract-declarator"))),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("decl-specifier-seq"), Optional(NT("abstract-declarator")), T("="), NT("initializer-clause"))
+      Sequence(NT("declarator"), Optional(Sequence(T("="), NT("initializer-clause")))),
+      Sequence(Optional(NT("abstract-declarator")), Optional(Sequence(T("="), NT("initializer-clause"))))
     )
   )
 );
@@ -1811,54 +1831,56 @@ rules.set("initializer-clause", () =>
 
 rules.set("braced-init-list", () =>
   Diagram(
+    T("{"),
     Choice(0,
-      Sequence(T("{"), NT("initializer-list"), Optional(T(",")), T("}")),
-      Sequence(T("{"), NT("designated-initializer-list"), Optional(T(",")), T("}")),
-      Sequence(T("{"), T("}"))
-    )
+      Sequence(NT("initializer-list"), Optional(T(","))),
+      Sequence(NT("designated-initializer-list"), Optional(T(","))),
+      Comment("empty")
+    ),
+    T("}")
   )
 );
 
 rules.set("initializer-list", () =>
   Diagram(
-    Sequence(
-      NT("initializer-clause"),
-      Optional(T("...")),
-      ZeroOrMore(Sequence(T(","), NT("initializer-clause"), Optional(T("..."))))
-    )
+    NT("initializer-clause"),
+    Optional(T("...")),
+    ZeroOrMore(Sequence(T(","), NT("initializer-clause"), Optional(T("..."))))
   )
 );
 
 rules.set("designated-initializer-list", () =>
   Diagram(
-    Sequence(
-      NT("designated-initializer-clause"),
-      ZeroOrMore(Sequence(T(","), NT("designated-initializer-clause")))
-    )
+    NT("designated-initializer-clause"),
+    ZeroOrMore(Sequence(T(","), NT("designated-initializer-clause")))
   )
 );
 
 rules.set("designated-initializer-clause", () =>
-  Diagram(
-    Sequence(NT("designator"), NT("brace-or-equal-initializer"))
-  )
+  Diagram(NT("designator"), NT("brace-or-equal-initializer"))
 );
 
 rules.set("designator", () =>
-  Diagram(Sequence(T("."), NT("identifier")))
+  Diagram(T("."), NT("identifier"))
 );
 
 rules.set("expr-or-braced-init-list", () =>
   Diagram(
-    Choice(0, NT("expression"), NT("braced-init-list"))
+    Choice(0,
+      NT("expression"),
+      NT("braced-init-list")
+    )
   )
 );
 
 rules.set("function-definition", () =>
   Diagram(
+    Optional(NT("attribute-specifier-seq")),
+    Optional(NT("decl-specifier-seq")),
+    NT("declarator"),
     Choice(0,
-      Sequence(Optional(NT("attribute-specifier-seq")), Optional(NT("decl-specifier-seq")), NT("declarator"), Optional(NT("virt-specifier-seq")), NT("function-body")),
-      Sequence(Optional(NT("attribute-specifier-seq")), Optional(NT("decl-specifier-seq")), NT("declarator"), NT("requires-clause"), NT("function-body"))
+      Sequence(Optional(NT("virt-specifier-seq")), NT("function-body")),
+      Sequence(NT("requires-clause"), NT("function-body"))
     )
   )
 );
@@ -1868,88 +1890,89 @@ rules.set("function-body", () =>
     Choice(0,
       Sequence(Optional(NT("ctor-initializer")), NT("compound-statement")),
       NT("function-try-block"),
-      Sequence(T("="), K("default"), T(";")),
-      Sequence(T("="), K("delete"), T(";"))
+      Sequence(T("="), T("default"), T(";")),
+      Sequence(T("="), T("delete"), T(";"))
     )
   )
 );
 
 rules.set("enum-specifier", () =>
   Diagram(
+    NT("enum-head"),
+    T("{"),
     Choice(0,
-      Sequence(NT("enum-head"), T("{"), Optional(NT("enumerator-list")), T("}")),
-      Sequence(NT("enum-head"), T("{"), NT("enumerator-list"), T(","), T("}"))
-    )
+      Optional(NT("enumerator-list")),
+      Sequence(NT("enumerator-list"), T(","))
+    ),
+    T("}")
   )
 );
 
 rules.set("enum-head", () =>
   Diagram(
-    Sequence(
-      NT("enum-key"),
-      Optional(NT("attribute-specifier-seq")),
-      Optional(NT("enum-head-name")),
-      Optional(NT("enum-base"))
-    )
+    NT("enum-key"),
+    Optional(NT("attribute-specifier-seq")),
+    Optional(NT("enum-head-name")),
+    Optional(NT("enum-base"))
   )
 );
 
 rules.set("enum-head-name", () =>
-  Diagram(
-    Sequence(Optional(NT("nested-name-specifier")), NT("identifier"))
-  )
+  Diagram(Optional(NT("nested-name-specifier")), NT("identifier"))
 );
 
 rules.set("opaque-enum-declaration", () =>
   Diagram(
-    Sequence(NT("enum-key"), Optional(NT("attribute-specifier-seq")), NT("enum-head-name"), Optional(NT("enum-base")), T(";"))
+    NT("enum-key"),
+    Optional(NT("attribute-specifier-seq")),
+    NT("enum-head-name"),
+    Optional(NT("enum-base")),
+    T(";")
   )
 );
 
 rules.set("enum-key", () =>
   Diagram(
     Choice(0,
-      K("enum"),
-      Sequence(K("enum"), K("class")),
-      Sequence(K("enum"), K("struct"))
+      T("enum"),
+      Sequence(T("enum"), T("class")),
+      Sequence(T("enum"), T("struct"))
     )
   )
 );
 
 rules.set("enum-base", () =>
-  Diagram(Sequence(T(":"), NT("type-specifier-seq")))
+  Diagram(T(":"), NT("type-specifier-seq"))
 );
 
 rules.set("enumerator-list", () =>
   Diagram(
-    Sequence(NT("enumerator-definition"), ZeroOrMore(Sequence(T(","), NT("enumerator-definition"))))
+    NT("enumerator-definition"),
+    ZeroOrMore(Sequence(T(","), NT("enumerator-definition")))
   )
 );
 
 rules.set("enumerator-definition", () =>
   Diagram(
-    Choice(0,
-      NT("enumerator"),
-      Sequence(NT("enumerator"), T("="), NT("constant-expression"))
-    )
+    NT("enumerator"),
+    Optional(Sequence(T("="), NT("constant-expression")))
   )
 );
 
 rules.set("enumerator", () =>
-  Diagram(Sequence(NT("identifier"), Optional(NT("attribute-specifier-seq"))))
+  Diagram(NT("identifier"), Optional(NT("attribute-specifier-seq")))
 );
 
 rules.set("using-enum-declaration", () =>
-  Diagram(
-    Sequence(K("using"), K("enum"), NT("using-enum-declarator"), T(";"))
-  )
+  Diagram(T("using"), T("enum"), NT("using-enum-declarator"), T(";"))
 );
 
 rules.set("using-enum-declarator", () =>
   Diagram(
+    Optional(NT("nested-name-specifier")),
     Choice(0,
-      Sequence(Optional(NT("nested-name-specifier")), NT("identifier")),
-      Sequence(Optional(NT("nested-name-specifier")), NT("simple-template-id"))
+      NT("identifier"),
+      NT("simple-template-id")
     )
   )
 );
@@ -1966,28 +1989,44 @@ rules.set("namespace-definition", () =>
 
 rules.set("named-namespace-definition", () =>
   Diagram(
-    Sequence(Optional(K("inline")), K("namespace"), Optional(NT("attribute-specifier-seq")), NT("identifier"), T("{"), NT("namespace-body"), T("}"))
+    Optional(T("inline")),
+    T("namespace"),
+    Optional(NT("attribute-specifier-seq")),
+    NT("identifier"),
+    T("{"),
+    NT("namespace-body"),
+    T("}")
   )
 );
 
 rules.set("unnamed-namespace-definition", () =>
   Diagram(
-    Sequence(Optional(K("inline")), K("namespace"), Optional(NT("attribute-specifier-seq")), T("{"), NT("namespace-body"), T("}"))
+    Optional(T("inline")),
+    T("namespace"),
+    Optional(NT("attribute-specifier-seq")),
+    T("{"),
+    NT("namespace-body"),
+    T("}")
   )
 );
 
 rules.set("nested-namespace-definition", () =>
   Diagram(
-    Sequence(K("namespace"), NT("enclosing-namespace-specifier"), T("::"), Optional(K("inline")), NT("identifier"), T("{"), NT("namespace-body"), T("}"))
+    T("namespace"),
+    NT("enclosing-namespace-specifier"),
+    T("::"),
+    Optional(T("inline")),
+    NT("identifier"),
+    T("{"),
+    NT("namespace-body"),
+    T("}")
   )
 );
 
 rules.set("enclosing-namespace-specifier", () =>
   Diagram(
-    Sequence(
-      NT("identifier"),
-      ZeroOrMore(Sequence(T("::"), Optional(K("inline")), NT("identifier")))
-    )
+    NT("identifier"),
+    ZeroOrMore(Sequence(T("::"), Optional(T("inline")), NT("identifier")))
   )
 );
 
@@ -1997,55 +2036,67 @@ rules.set("namespace-body", () =>
 
 rules.set("namespace-alias-definition", () =>
   Diagram(
-    Sequence(K("namespace"), NT("identifier"), T("="), NT("qualified-namespace-specifier"), T(";"))
+    T("namespace"),
+    NT("identifier"),
+    T("="),
+    NT("qualified-namespace-specifier"),
+    T(";")
   )
 );
 
 rules.set("qualified-namespace-specifier", () =>
-  Diagram(
-    Sequence(Optional(NT("nested-name-specifier")), NT("namespace-name"))
-  )
+  Diagram(Optional(NT("nested-name-specifier")), NT("namespace-name"))
 );
 
 rules.set("using-directive", () =>
   Diagram(
-    Sequence(Optional(NT("attribute-specifier-seq")), K("using"), K("namespace"), Optional(NT("nested-name-specifier")), NT("namespace-name"), T(";"))
+    Optional(NT("attribute-specifier-seq")),
+    T("using"),
+    T("namespace"),
+    Optional(NT("nested-name-specifier")),
+    NT("namespace-name"),
+    T(";")
   )
 );
 
 rules.set("using-declaration", () =>
-  Diagram(
-    Sequence(K("using"), NT("using-declarator-list"), T(";"))
-  )
+  Diagram(T("using"), NT("using-declarator-list"), T(";"))
 );
 
 rules.set("using-declarator-list", () =>
   Diagram(
-    Sequence(
-      NT("using-declarator"),
-      Optional(T("...")),
-      ZeroOrMore(Sequence(T(","), NT("using-declarator"), Optional(T("..."))))
-    )
+    NT("using-declarator"),
+    Optional(T("...")),
+    ZeroOrMore(Sequence(T(","), NT("using-declarator"), Optional(T("..."))))
   )
 );
 
 rules.set("using-declarator", () =>
   Diagram(
-    Sequence(Optional(K("typename")), NT("nested-name-specifier"), NT("unqualified-id"))
+    Optional(T("typename")),
+    NT("nested-name-specifier"),
+    NT("unqualified-id")
   )
 );
 
 rules.set("asm-declaration", () =>
   Diagram(
-    Sequence(Optional(NT("attribute-specifier-seq")), K("asm"), T("("), NT("string-literal"), T(")"), T(";"))
+    Optional(NT("attribute-specifier-seq")),
+    T("asm"),
+    T("("),
+    NT("string-literal"),
+    T(")"),
+    T(";")
   )
 );
 
 rules.set("linkage-specification", () =>
   Diagram(
+    T("extern"),
+    NT("string-literal"),
     Choice(0,
-      Sequence(K("extern"), NT("string-literal"), T("{"), Optional(NT("declaration-seq")), T("}")),
-      Sequence(K("extern"), NT("string-literal"), NT("name-declaration"))
+      Sequence(T("{"), Optional(NT("declaration-seq")), T("}")),
+      NT("name-declaration")
     )
   )
 );
@@ -2057,7 +2108,14 @@ rules.set("attribute-specifier-seq", () =>
 rules.set("attribute-specifier", () =>
   Diagram(
     Choice(0,
-      Sequence(T("[["), Optional(NT("attribute-using-prefix")), NT("attribute-list"), T("]]")),
+      Sequence(
+        T("["),
+        T("["),
+        Optional(NT("attribute-using-prefix")),
+        NT("attribute-list"),
+        T("]"),
+        T("]")
+      ),
       NT("alignment-specifier")
     )
   )
@@ -2065,33 +2123,35 @@ rules.set("attribute-specifier", () =>
 
 rules.set("alignment-specifier", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("alignas"), T("("), NT("type-id"), Optional(T("...")), T(")")),
-      Sequence(K("alignas"), T("("), NT("constant-expression"), Optional(T("...")), T(")"))
-    )
+    T("alignas"),
+    T("("),
+    Choice(0, NT("type-id"), NT("constant-expression")),
+    Optional(T("...")),
+    T(")")
   )
 );
 
 rules.set("attribute-using-prefix", () =>
-  Diagram(
-    Sequence(K("using"), NT("attribute-namespace"), T(":"))
-  )
+  Diagram(T("using"), NT("attribute-namespace"), T(":"))
 );
 
 rules.set("attribute-list", () =>
   Diagram(
-    Sequence(
-      Optional(NT("attribute")),
-      ZeroOrMore(Sequence(T(","), Optional(NT("attribute")))),
-      ZeroOrMore(Sequence(NT("attribute"), T("...")))
+    Optional(NT("attribute")),
+    ZeroOrMore(
+      Sequence(
+        T(","),
+        Choice(0,
+          Optional(NT("attribute")),
+          Sequence(NT("attribute"), T("..."))
+        )
+      )
     )
   )
 );
 
 rules.set("attribute", () =>
-  Diagram(
-    Sequence(NT("attribute-token"), Optional(NT("attribute-argument-clause")))
-  )
+  Diagram(NT("attribute-token"), Optional(NT("attribute-argument-clause")))
 );
 
 rules.set("attribute-token", () =>
@@ -2104,9 +2164,7 @@ rules.set("attribute-token", () =>
 );
 
 rules.set("attribute-scoped-token", () =>
-  Diagram(
-    Sequence(NT("attribute-namespace"), T("::"), NT("identifier"))
-  )
+  Diagram(NT("attribute-namespace"), T("::"), NT("identifier"))
 );
 
 rules.set("attribute-namespace", () =>
@@ -2114,9 +2172,7 @@ rules.set("attribute-namespace", () =>
 );
 
 rules.set("attribute-argument-clause", () =>
-  Diagram(
-    Sequence(T("("), Optional(NT("balanced-token-seq")), T(")"))
-  )
+  Diagram(T("("), Optional(NT("balanced-token-seq")), T(")"))
 );
 
 rules.set("balanced-token-seq", () =>
@@ -2138,108 +2194,97 @@ rules.set("balanced-token", () =>
 
 rules.set("module-declaration", () =>
   Diagram(
-    Sequence(
-      Optional(NT("export-keyword")),
-      NT("module-keyword"),
-      NT("module-name"),
-      Optional(NT("module-partition")),
-      Optional(NT("attribute-specifier-seq")),
-      T(";")
-    )
+    Optional(T("export")),
+    T("module"),
+    NT("module-name"),
+    Optional(NT("module-partition")),
+    Optional(NT("attribute-specifier-seq")),
+    T(";")
   )
 );
 
 rules.set("module-name", () =>
-  Diagram(
-    Sequence(Optional(NT("module-name-qualifier")), NT("identifier"))
-  )
+  Diagram(Optional(NT("module-name-qualifier")), NT("identifier"))
 );
 
 rules.set("module-partition", () =>
-  Diagram(
-    Sequence(T(":"), Optional(NT("module-name-qualifier")), NT("identifier"))
-  )
+  Diagram(T(":"), Optional(NT("module-name-qualifier")), NT("identifier"))
 );
 
 rules.set("module-name-qualifier", () =>
   Diagram(
-    OneOrMore(Sequence(NT("identifier"), T(".")))
+    NT("identifier"),
+    T("."),
+    ZeroOrMore(Sequence(NT("identifier"), T(".")))
   )
 );
 
 rules.set("export-declaration", () =>
   Diagram(
     Choice(0,
-      Sequence(K("export"), NT("name-declaration")),
-      Sequence(K("export"), T("{"), Optional(NT("declaration-seq")), T("}")),
-      Sequence(NT("export-keyword"), NT("module-import-declaration"))
+      Sequence(T("export"), NT("name-declaration")),
+      Sequence(T("export"), T("{"), Optional(NT("declaration-seq")), T("}")),
+      Sequence(T("export"), NT("module-import-declaration"))
     )
   )
 );
 
 rules.set("module-import-declaration", () =>
   Diagram(
+    T("import"),
     Choice(0,
-      Sequence(NT("import-keyword"), NT("module-name"), Optional(NT("attribute-specifier-seq")), T(";")),
-      Sequence(NT("import-keyword"), NT("module-partition"), Optional(NT("attribute-specifier-seq")), T(";")),
-      Sequence(NT("import-keyword"), NT("header-name"), Optional(NT("attribute-specifier-seq")), T(";"))
-    )
+      NT("module-name"),
+      NT("module-partition"),
+      NT("header-name")
+    ),
+    Optional(NT("attribute-specifier-seq")),
+    T(";")
   )
 );
 
 rules.set("global-module-fragment", () =>
-  Diagram(
-    Sequence(NT("module-keyword"), T(";"), Optional(NT("declaration-seq")))
-  )
+  Diagram(T("module"), T(";"), Optional(NT("declaration-seq")))
 );
 
 rules.set("private-module-fragment", () =>
-  Diagram(
-    Sequence(NT("module-keyword"), T(":"), K("private"), T(";"), Optional(NT("declaration-seq")))
-  )
-);
-
-rules.set("import-keyword", () =>
-  Diagram(K("import"))
-);
-
-rules.set("module-keyword", () =>
-  Diagram(K("module"))
-);
-
-rules.set("export-keyword", () =>
-  Diagram(K("export"))
+  Diagram(T("module"), T(":"), T("private"), T(";"), Optional(NT("declaration-seq")))
 );
 
 // ===== A.9 Classes [gram.class] =====
 
 rules.set("class-specifier", () =>
   Diagram(
-    Sequence(NT("class-head"), T("{"), Optional(NT("member-specification")), T("}"))
+    NT("class-head"),
+    T("{"),
+    Optional(NT("member-specification")),
+    T("}")
   )
 );
 
 rules.set("class-head", () =>
   Diagram(
-    Choice(0,
-      Sequence(NT("class-key"), Optional(NT("attribute-specifier-seq")), NT("class-head-name"), Optional(NT("class-virt-specifier")), Optional(NT("base-clause"))),
-      Sequence(NT("class-key"), Optional(NT("attribute-specifier-seq")), Optional(NT("base-clause")))
-    )
+    NT("class-key"),
+    Optional(NT("attribute-specifier-seq")),
+    Optional(
+      Sequence(
+        NT("class-head-name"),
+        Optional(NT("class-virt-specifier"))
+      )
+    ),
+    Optional(NT("base-clause"))
   )
 );
 
 rules.set("class-head-name", () =>
-  Diagram(
-    Sequence(Optional(NT("nested-name-specifier")), NT("class-name"))
-  )
+  Diagram(Optional(NT("nested-name-specifier")), NT("class-name"))
 );
 
 rules.set("class-virt-specifier", () =>
-  Diagram(K("final"))
+  Diagram(T("final"))
 );
 
 rules.set("class-key", () =>
-  Diagram(Choice(0, K("class"), K("struct"), K("union")))
+  Diagram(Choice(0, T("class"), T("struct"), T("union")))
 );
 
 rules.set("member-specification", () =>
@@ -2256,7 +2301,12 @@ rules.set("member-specification", () =>
 rules.set("member-declaration", () =>
   Diagram(
     Choice(0,
-      Sequence(Optional(NT("attribute-specifier-seq")), Optional(NT("decl-specifier-seq")), Optional(NT("member-declarator-list")), T(";")),
+      Sequence(
+        Optional(NT("attribute-specifier-seq")),
+        Optional(NT("decl-specifier-seq")),
+        Optional(NT("member-declarator-list")),
+        T(";")
+      ),
       NT("function-definition"),
       NT("using-declaration"),
       NT("using-enum-declaration"),
@@ -2273,17 +2323,29 @@ rules.set("member-declaration", () =>
 
 rules.set("member-declarator-list", () =>
   Diagram(
-    Sequence(NT("member-declarator"), ZeroOrMore(Sequence(T(","), NT("member-declarator"))))
+    NT("member-declarator"),
+    ZeroOrMore(Sequence(T(","), NT("member-declarator")))
   )
 );
 
 rules.set("member-declarator", () =>
   Diagram(
     Choice(0,
-      Sequence(NT("declarator"), Optional(NT("virt-specifier-seq")), Optional(NT("pure-specifier"))),
-      Sequence(NT("declarator"), NT("requires-clause")),
-      Sequence(NT("declarator"), Optional(NT("brace-or-equal-initializer"))),
-      Sequence(Optional(NT("identifier")), Optional(NT("attribute-specifier-seq")), T(":"), NT("constant-expression"), Optional(NT("brace-or-equal-initializer")))
+      Sequence(
+        NT("declarator"),
+        Choice(0,
+          Sequence(Optional(NT("virt-specifier-seq")), Optional(NT("pure-specifier"))),
+          NT("requires-clause"),
+          Optional(NT("brace-or-equal-initializer"))
+        )
+      ),
+      Sequence(
+        Optional(NT("identifier")),
+        Optional(NT("attribute-specifier-seq")),
+        T(":"),
+        NT("constant-expression"),
+        Optional(NT("brace-or-equal-initializer"))
+      )
     )
   )
 );
@@ -2293,51 +2355,44 @@ rules.set("virt-specifier-seq", () =>
 );
 
 rules.set("virt-specifier", () =>
-  Diagram(Choice(0, K("override"), K("final")))
+  Diagram(Choice(0, T("override"), T("final")))
 );
 
 rules.set("pure-specifier", () =>
-  Diagram(Sequence(T("="), T("0")))
+  Diagram(T("="), T("0"))
 );
 
 rules.set("conversion-function-id", () =>
-  Diagram(
-    Sequence(K("operator"), NT("conversion-type-id"))
-  )
+  Diagram(T("operator"), NT("conversion-type-id"))
 );
 
 rules.set("conversion-type-id", () =>
-  Diagram(
-    Sequence(NT("type-specifier-seq"), Optional(NT("conversion-declarator")))
-  )
+  Diagram(NT("type-specifier-seq"), Optional(NT("conversion-declarator")))
 );
 
 rules.set("conversion-declarator", () =>
-  Diagram(
-    Sequence(NT("ptr-operator"), Optional(NT("conversion-declarator")))
-  )
+  Diagram(NT("ptr-operator"), Optional(NT("conversion-declarator")))
 );
 
 rules.set("base-clause", () =>
-  Diagram(Sequence(T(":"), NT("base-specifier-list")))
+  Diagram(T(":"), NT("base-specifier-list"))
 );
 
 rules.set("base-specifier-list", () =>
   Diagram(
-    Sequence(
-      NT("base-specifier"),
-      Optional(T("...")),
-      ZeroOrMore(Sequence(T(","), NT("base-specifier"), Optional(T("..."))))
-    )
+    NT("base-specifier"),
+    Optional(T("...")),
+    ZeroOrMore(Sequence(T(","), NT("base-specifier"), Optional(T("..."))))
   )
 );
 
 rules.set("base-specifier", () =>
   Diagram(
+    Optional(NT("attribute-specifier-seq")),
     Choice(0,
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("class-or-decltype")),
-      Sequence(Optional(NT("attribute-specifier-seq")), K("virtual"), Optional(NT("access-specifier")), NT("class-or-decltype")),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("access-specifier"), Optional(K("virtual")), NT("class-or-decltype"))
+      NT("class-or-decltype"),
+      Sequence(T("virtual"), Optional(NT("access-specifier")), NT("class-or-decltype")),
+      Sequence(NT("access-specifier"), Optional(T("virtual")), NT("class-or-decltype"))
     )
   )
 );
@@ -2346,35 +2401,34 @@ rules.set("class-or-decltype", () =>
   Diagram(
     Choice(0,
       Sequence(Optional(NT("nested-name-specifier")), NT("type-name")),
-      Sequence(NT("nested-name-specifier"), K("template"), NT("simple-template-id")),
+      Sequence(NT("nested-name-specifier"), T("template"), NT("simple-template-id")),
       NT("decltype-specifier")
     )
   )
 );
 
 rules.set("access-specifier", () =>
-  Diagram(Choice(0, K("private"), K("protected"), K("public")))
+  Diagram(Choice(0, T("private"), T("protected"), T("public")))
 );
 
 rules.set("ctor-initializer", () =>
-  Diagram(Sequence(T(":"), NT("mem-initializer-list")))
+  Diagram(T(":"), NT("mem-initializer-list"))
 );
 
 rules.set("mem-initializer-list", () =>
   Diagram(
-    Sequence(
-      NT("mem-initializer"),
-      Optional(T("...")),
-      ZeroOrMore(Sequence(T(","), NT("mem-initializer"), Optional(T("..."))))
-    )
+    NT("mem-initializer"),
+    Optional(T("...")),
+    ZeroOrMore(Sequence(T(","), NT("mem-initializer"), Optional(T("..."))))
   )
 );
 
 rules.set("mem-initializer", () =>
   Diagram(
+    NT("mem-initializer-id"),
     Choice(0,
-      Sequence(NT("mem-initializer-id"), T("("), Optional(NT("expression-list")), T(")")),
-      Sequence(NT("mem-initializer-id"), NT("braced-init-list"))
+      Sequence(T("("), Optional(NT("expression-list")), T(")")),
+      NT("braced-init-list")
     )
   )
 );
@@ -2391,29 +2445,28 @@ rules.set("mem-initializer-id", () =>
 // ===== A.10 Overloading [gram.over] =====
 
 rules.set("operator-function-id", () =>
-  Diagram(
-    Sequence(K("operator"), NT("operator"))
-  )
+  Diagram(T("operator"), NT("operator"))
 );
 
 rules.set("operator", () =>
   Diagram(
     Choice(0,
-      K("new"), K("delete"), T("new[]"), T("delete[]"), K("co_await"),
+      T("new"), T("delete"), T("new[]"), T("delete[]"), T("co_await"),
       T("()"), T("[]"), T("->"), T("->*"),
       T("~"), T("!"), T("+"), T("-"), T("*"), T("/"), T("%"), T("^"), T("&"),
       T("|"), T("="), T("+="), T("-="), T("*="), T("/="), T("%="), T("^="), T("&="),
-      T("|="), T("=="), T("!="), T("<"), T(">"), T("<="), T(">="), T("<=>"), T("&&"),
-      T("||"), T("<<"), T(">>"), T("<<="), T(">>="), T("++"), T("--"), T(",")
+      T("|="), T("=="), T("!="), T("<"), T(">"), T("<="), T(">="), T("<=>"),
+      T("&&"), T("||"), T("<<"), T(">>"), T("<<="), T(">>="), T("++"), T("--"), T(",")
     )
   )
 );
 
 rules.set("literal-operator-id", () =>
   Diagram(
+    T("operator"),
     Choice(0,
-      Sequence(K("operator"), NT("string-literal"), NT("identifier")),
-      Sequence(K("operator"), NT("user-defined-string-literal"))
+      Sequence(NT("string-literal"), NT("identifier")),
+      NT("user-defined-string-literal")
     )
   )
 );
@@ -2422,46 +2475,46 @@ rules.set("literal-operator-id", () =>
 
 rules.set("template-declaration", () =>
   Diagram(
+    NT("template-head"),
     Choice(0,
-      Sequence(NT("template-head"), NT("declaration")),
-      Sequence(NT("template-head"), NT("concept-definition"))
+      NT("declaration"),
+      NT("concept-definition")
     )
   )
 );
 
 rules.set("template-head", () =>
   Diagram(
-    Sequence(K("template"), T("<"), NT("template-parameter-list"), T(">"), Optional(NT("requires-clause")))
+    T("template"),
+    T("<"),
+    NT("template-parameter-list"),
+    T(">"),
+    Optional(NT("requires-clause"))
   )
 );
 
 rules.set("template-parameter-list", () =>
   Diagram(
-    Sequence(NT("template-parameter"), ZeroOrMore(Sequence(T(","), NT("template-parameter"))))
+    NT("template-parameter"),
+    ZeroOrMore(Sequence(T(","), NT("template-parameter")))
   )
 );
 
 rules.set("requires-clause", () =>
-  Diagram(
-    Sequence(K("requires"), NT("constraint-logical-or-expression"))
-  )
+  Diagram(T("requires"), NT("constraint-logical-or-expression"))
 );
 
 rules.set("constraint-logical-or-expression", () =>
   Diagram(
-    Sequence(
-      NT("constraint-logical-and-expression"),
-      ZeroOrMore(Sequence(T("||"), NT("constraint-logical-and-expression")))
-    )
+    NT("constraint-logical-and-expression"),
+    ZeroOrMore(Sequence(T("||"), NT("constraint-logical-and-expression")))
   )
 );
 
 rules.set("constraint-logical-and-expression", () =>
   Diagram(
-    Sequence(
-      NT("primary-expression"),
-      ZeroOrMore(Sequence(T("&&"), NT("primary-expression")))
-    )
+    NT("primary-expression"),
+    ZeroOrMore(Sequence(T("&&"), NT("primary-expression")))
   )
 );
 
@@ -2488,21 +2541,23 @@ rules.set("type-parameter", () =>
 );
 
 rules.set("type-parameter-key", () =>
-  Diagram(Choice(0, K("class"), K("typename")))
+  Diagram(Choice(0, T("class"), T("typename")))
 );
 
 rules.set("type-constraint", () =>
   Diagram(
-    Choice(0,
-      Sequence(Optional(NT("nested-name-specifier")), NT("concept-name")),
-      Sequence(Optional(NT("nested-name-specifier")), NT("concept-name"), T("<"), Optional(NT("template-argument-list")), T(">"))
-    )
+    Optional(NT("nested-name-specifier")),
+    NT("concept-name"),
+    Optional(Sequence(T("<"), Optional(NT("template-argument-list")), T(">")))
   )
 );
 
 rules.set("simple-template-id", () =>
   Diagram(
-    Sequence(NT("template-name"), T("<"), Optional(NT("template-argument-list")), T(">"))
+    NT("template-name"),
+    T("<"),
+    Optional(NT("template-argument-list")),
+    T(">")
   )
 );
 
@@ -2518,11 +2573,9 @@ rules.set("template-id", () =>
 
 rules.set("template-argument-list", () =>
   Diagram(
-    Sequence(
-      NT("template-argument"),
-      Optional(T("...")),
-      ZeroOrMore(Sequence(T(","), NT("template-argument"), Optional(T("..."))))
-    )
+    NT("template-argument"),
+    Optional(T("...")),
+    ZeroOrMore(Sequence(T(","), NT("template-argument"), Optional(T("..."))))
   )
 );
 
@@ -2542,22 +2595,25 @@ rules.set("constraint-expression", () =>
 
 rules.set("deduction-guide", () =>
   Diagram(
-    Sequence(
-      Optional(NT("explicit-specifier")),
-      NT("template-name"),
-      T("("),
-      NT("parameter-declaration-clause"),
-      T(")"),
-      T("->"),
-      NT("simple-template-id"),
-      T(";")
-    )
+    Optional(NT("explicit-specifier")),
+    NT("template-name"),
+    T("("),
+    NT("parameter-declaration-clause"),
+    T(")"),
+    T("->"),
+    NT("simple-template-id"),
+    T(";")
   )
 );
 
 rules.set("concept-definition", () =>
   Diagram(
-    Sequence(K("concept"), NT("concept-name"), Optional(NT("attribute-specifier-seq")), T("="), NT("constraint-expression"), T(";"))
+    T("concept"),
+    NT("concept-name"),
+    Optional(NT("attribute-specifier-seq")),
+    T("="),
+    NT("constraint-expression"),
+    T(";")
   )
 );
 
@@ -2567,36 +2623,35 @@ rules.set("concept-name", () =>
 
 rules.set("typename-specifier", () =>
   Diagram(
+    T("typename"),
+    NT("nested-name-specifier"),
     Choice(0,
-      Sequence(K("typename"), NT("nested-name-specifier"), NT("identifier")),
-      Sequence(K("typename"), NT("nested-name-specifier"), Optional(K("template")), NT("simple-template-id"))
+      NT("identifier"),
+      Sequence(Optional(T("template")), NT("simple-template-id"))
     )
   )
 );
 
 rules.set("explicit-instantiation", () =>
-  Diagram(
-    Sequence(Optional(K("extern")), K("template"), NT("declaration"))
-  )
+  Diagram(Optional(T("extern")), T("template"), NT("declaration"))
 );
 
 rules.set("explicit-specialization", () =>
-  Diagram(
-    Sequence(K("template"), T("<"), T(">"), NT("declaration"))
-  )
+  Diagram(T("template"), T("<"), T(">"), NT("declaration"))
 );
 
 // ===== A.12 Exception handling [gram.except] =====
 
 rules.set("try-block", () =>
-  Diagram(
-    Sequence(K("try"), NT("compound-statement"), NT("handler-seq"))
-  )
+  Diagram(T("try"), NT("compound-statement"), NT("handler-seq"))
 );
 
 rules.set("function-try-block", () =>
   Diagram(
-    Sequence(K("try"), Optional(NT("ctor-initializer")), NT("compound-statement"), NT("handler-seq"))
+    T("try"),
+    Optional(NT("ctor-initializer")),
+    NT("compound-statement"),
+    NT("handler-seq")
   )
 );
 
@@ -2606,15 +2661,22 @@ rules.set("handler-seq", () =>
 
 rules.set("handler", () =>
   Diagram(
-    Sequence(K("catch"), T("("), NT("exception-declaration"), T(")"), NT("compound-statement"))
+    T("catch"),
+    T("("),
+    NT("exception-declaration"),
+    T(")"),
+    NT("compound-statement")
   )
 );
 
 rules.set("exception-declaration", () =>
   Diagram(
     Choice(0,
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("type-specifier-seq"), NT("declarator")),
-      Sequence(Optional(NT("attribute-specifier-seq")), NT("type-specifier-seq"), Optional(NT("abstract-declarator"))),
+      Sequence(
+        Optional(NT("attribute-specifier-seq")),
+        NT("type-specifier-seq"),
+        Choice(0, NT("declarator"), Optional(NT("abstract-declarator")))
+      ),
       T("...")
     )
   )
@@ -2622,10 +2684,8 @@ rules.set("exception-declaration", () =>
 
 rules.set("noexcept-specifier", () =>
   Diagram(
-    Choice(0,
-      Sequence(K("noexcept"), T("("), NT("constant-expression"), T(")")),
-      K("noexcept")
-    )
+    T("noexcept"),
+    Optional(Sequence(T("("), NT("constant-expression"), T(")")))
   )
 );
 
@@ -2642,25 +2702,19 @@ rules.set("preprocessing-file", () =>
 
 rules.set("module-file", () =>
   Diagram(
-    Sequence(
-      Optional(NT("pp-global-module-fragment")),
-      NT("pp-module"),
-      Optional(NT("group")),
-      Optional(NT("pp-private-module-fragment"))
-    )
+    Optional(NT("pp-global-module-fragment")),
+    NT("pp-module"),
+    Optional(NT("group")),
+    Optional(NT("pp-private-module-fragment"))
   )
 );
 
 rules.set("pp-global-module-fragment", () =>
-  Diagram(
-    Sequence(K("module"), T(";"), NT("new-line"), Optional(NT("group")))
-  )
+  Diagram(T("module"), T(";"), NT("new-line"), Optional(NT("group")))
 );
 
 rules.set("pp-private-module-fragment", () =>
-  Diagram(
-    Sequence(K("module"), T(":"), K("private"), T(";"), NT("new-line"), Optional(NT("group")))
-  )
+  Diagram(T("module"), T(":"), T("private"), T(";"), NT("new-line"), Optional(NT("group")))
 );
 
 rules.set("group", () =>
@@ -2681,17 +2735,17 @@ rules.set("group-part", () =>
 rules.set("control-line", () =>
   Diagram(
     Choice(0,
-      Sequence(T("#"), K("include"), NT("pp-tokens"), NT("new-line")),
+      Sequence(T("#"), T("include"), NT("pp-tokens"), NT("new-line")),
       NT("pp-import"),
-      Sequence(T("#"), K("define"), NT("identifier"), NT("replacement-list"), NT("new-line")),
-      Sequence(T("#"), K("define"), NT("identifier"), NT("lparen"), Optional(NT("identifier-list")), T(")"), NT("replacement-list"), NT("new-line")),
-      Sequence(T("#"), K("define"), NT("identifier"), NT("lparen"), T("..."), T(")"), NT("replacement-list"), NT("new-line")),
-      Sequence(T("#"), K("define"), NT("identifier"), NT("lparen"), NT("identifier-list"), T(","), T("..."), T(")"), NT("replacement-list"), NT("new-line")),
-      Sequence(T("#"), K("undef"), NT("identifier"), NT("new-line")),
-      Sequence(T("#"), K("line"), NT("pp-tokens"), NT("new-line")),
-      Sequence(T("#"), K("error"), Optional(NT("pp-tokens")), NT("new-line")),
-      Sequence(T("#"), K("warning"), Optional(NT("pp-tokens")), NT("new-line")),
-      Sequence(T("#"), K("pragma"), Optional(NT("pp-tokens")), NT("new-line")),
+      Sequence(T("#"), T("define"), NT("identifier"), NT("replacement-list"), NT("new-line")),
+      Sequence(T("#"), T("define"), NT("identifier"), NT("lparen"), Optional(NT("identifier-list")), T(")"), NT("replacement-list"), NT("new-line")),
+      Sequence(T("#"), T("define"), NT("identifier"), NT("lparen"), T("..."), T(")"), NT("replacement-list"), NT("new-line")),
+      Sequence(T("#"), T("define"), NT("identifier"), NT("lparen"), NT("identifier-list"), T(","), T("..."), T(")"), NT("replacement-list"), NT("new-line")),
+      Sequence(T("#"), T("undef"), NT("identifier"), NT("new-line")),
+      Sequence(T("#"), T("line"), NT("pp-tokens"), NT("new-line")),
+      Sequence(T("#"), T("error"), Optional(NT("pp-tokens")), NT("new-line")),
+      Sequence(T("#"), T("warning"), Optional(NT("pp-tokens")), NT("new-line")),
+      Sequence(T("#"), T("pragma"), Optional(NT("pp-tokens")), NT("new-line")),
       Sequence(T("#"), NT("new-line"))
     )
   )
@@ -2699,17 +2753,23 @@ rules.set("control-line", () =>
 
 rules.set("if-section", () =>
   Diagram(
-    Sequence(NT("if-group"), Optional(NT("elif-groups")), Optional(NT("else-group")), NT("endif-line"))
+    NT("if-group"),
+    Optional(NT("elif-groups")),
+    Optional(NT("else-group")),
+    NT("endif-line")
   )
 );
 
 rules.set("if-group", () =>
   Diagram(
+    T("#"),
     Choice(0,
-      Sequence(T("#"), K("if"), NT("constant-expression"), NT("new-line"), Optional(NT("group"))),
-      Sequence(T("#"), K("ifdef"), NT("identifier"), NT("new-line"), Optional(NT("group"))),
-      Sequence(T("#"), K("ifndef"), NT("identifier"), NT("new-line"), Optional(NT("group")))
-    )
+      Sequence(T("if"), NT("constant-expression")),
+      Sequence(T("ifdef"), NT("identifier")),
+      Sequence(T("ifndef"), NT("identifier"))
+    ),
+    NT("new-line"),
+    Optional(NT("group"))
   )
 );
 
@@ -2719,30 +2779,31 @@ rules.set("elif-groups", () =>
 
 rules.set("elif-group", () =>
   Diagram(
+    T("#"),
     Choice(0,
-      Sequence(T("#"), K("elif"), NT("constant-expression"), NT("new-line"), Optional(NT("group"))),
-      Sequence(T("#"), K("elifdef"), NT("identifier"), NT("new-line"), Optional(NT("group"))),
-      Sequence(T("#"), K("elifndef"), NT("identifier"), NT("new-line"), Optional(NT("group")))
-    )
+      Sequence(T("elif"), NT("constant-expression")),
+      Sequence(T("elifdef"), NT("identifier")),
+      Sequence(T("elifndef"), NT("identifier"))
+    ),
+    NT("new-line"),
+    Optional(NT("group"))
   )
 );
 
 rules.set("else-group", () =>
-  Diagram(
-    Sequence(T("#"), K("else"), NT("new-line"), Optional(NT("group")))
-  )
+  Diagram(T("#"), T("else"), NT("new-line"), Optional(NT("group")))
 );
 
 rules.set("endif-line", () =>
-  Diagram(Sequence(T("#"), K("endif"), NT("new-line")))
+  Diagram(T("#"), T("endif"), NT("new-line"))
 );
 
 rules.set("text-line", () =>
-  Diagram(Sequence(Optional(NT("pp-tokens")), NT("new-line")))
+  Diagram(Optional(NT("pp-tokens")), NT("new-line"))
 );
 
 rules.set("conditionally-supported-directive", () =>
-  Diagram(Sequence(NT("pp-tokens"), NT("new-line")))
+  Diagram(NT("pp-tokens"), NT("new-line"))
 );
 
 rules.set("lparen", () =>
@@ -2751,7 +2812,8 @@ rules.set("lparen", () =>
 
 rules.set("identifier-list", () =>
   Diagram(
-    Sequence(NT("identifier"), ZeroOrMore(Sequence(T(","), NT("identifier"))))
+    NT("identifier"),
+    ZeroOrMore(Sequence(T(","), NT("identifier")))
   )
 );
 
@@ -2764,20 +2826,21 @@ rules.set("pp-tokens", () =>
 );
 
 rules.set("new-line", () =>
-  Diagram(Comment("new-line character"))
+  Diagram(Comment("the new-line character"))
 );
 
 rules.set("defined-macro-expression", () =>
   Diagram(
+    T("defined"),
     Choice(0,
-      Sequence(K("defined"), NT("identifier")),
-      Sequence(K("defined"), T("("), NT("identifier"), T(")"))
+      NT("identifier"),
+      Sequence(T("("), NT("identifier"), T(")"))
     )
   )
 );
 
 rules.set("h-preprocessing-token", () =>
-  Diagram(Comment("any preprocessing-token except >"))
+  Diagram(Comment("any preprocessing-token other than >"))
 );
 
 rules.set("h-pp-tokens", () =>
@@ -2795,47 +2858,53 @@ rules.set("header-name-tokens", () =>
 
 rules.set("has-include-expression", () =>
   Diagram(
+    T("__has_include"),
+    T("("),
     Choice(0,
-      Sequence(T("__has_include"), T("("), NT("header-name"), T(")")),
-      Sequence(T("__has_include"), T("("), NT("header-name-tokens"), T(")"))
-    )
+      NT("header-name"),
+      NT("header-name-tokens")
+    ),
+    T(")")
   )
 );
 
 rules.set("has-attribute-expression", () =>
-  Diagram(
-    Sequence(T("__has_cpp_attribute"), T("("), NT("pp-tokens"), T(")"))
-  )
+  Diagram(T("__has_cpp_attribute"), T("("), NT("pp-tokens"), T(")"))
 );
 
 rules.set("pp-module", () =>
   Diagram(
-    Sequence(Optional(K("export")), K("module"), Optional(NT("pp-tokens")), T(";"), NT("new-line"))
+    Optional(T("export")),
+    T("module"),
+    Optional(NT("pp-tokens")),
+    T(";"),
+    NT("new-line")
   )
 );
 
 rules.set("pp-import", () =>
   Diagram(
+    Optional(T("export")),
+    T("import"),
     Choice(0,
-      Sequence(Optional(K("export")), K("import"), NT("header-name"), Optional(NT("pp-tokens")), T(";"), NT("new-line")),
-      Sequence(Optional(K("export")), K("import"), NT("header-name-tokens"), Optional(NT("pp-tokens")), T(";"), NT("new-line")),
-      Sequence(Optional(K("export")), K("import"), NT("pp-tokens"), T(";"), NT("new-line"))
-    )
+      NT("header-name"),
+      NT("header-name-tokens"),
+      NT("pp-tokens")
+    ),
+    Optional(NT("pp-tokens")),
+    T(";"),
+    NT("new-line")
   )
 );
 
 rules.set("va-opt-replacement", () =>
-  Diagram(
-    Sequence(T("__VA_OPT__"), T("("), Optional(NT("pp-tokens")), T(")"))
-  )
+  Diagram(T("__VA_OPT__"), T("("), Optional(NT("pp-tokens")), T(")"))
 );
 
-// --- React/TS integration exports --------------------------------------------
 
-export type SectionId = "keywords" | "lexical" | "literals" | "basics" | "expressions" | "statements" | "declarations" | "modules" | "classes" | "overloading" | "templates" | "exceptions" | "preprocessing";
-export type RuleName = string;
+// --- Section definitions --------------------------------------------------------
 
-export const SECTION_ORDER: SectionId[] = [
+export const SECTION_ORDER = [
   "keywords",
   "lexical",
   "literals",
@@ -2848,35 +2917,37 @@ export const SECTION_ORDER: SectionId[] = [
   "overloading",
   "templates",
   "exceptions",
-  "preprocessing"
-];
+  "preprocessing",
+] as const;
+
+export type SectionId = (typeof SECTION_ORDER)[number];
 
 export const SECTION_TITLES: Record<SectionId, string> = {
-  keywords: "A.2 Keywords [gram.key]",
-  lexical: "A.3 Lexical Conventions [gram.lex]",
+  keywords: "A.2 Keywords",
+  lexical: "A.3 Lexical Conventions",
   literals: "A.3 Literals",
-  basics: "A.4 Basics [gram.basic]",
-  expressions: "A.5 Expressions [gram.expr]",
-  statements: "A.6 Statements [gram.stmt]",
-  declarations: "A.7 Declarations [gram.dcl]",
-  modules: "A.8 Modules [gram.module]",
-  classes: "A.9 Classes [gram.class]",
-  overloading: "A.10 Overloading [gram.over]",
-  templates: "A.11 Templates [gram.temp]",
-  exceptions: "A.12 Exception Handling [gram.except]",
-  preprocessing: "A.13 Preprocessing [gram.cpp]"
+  basics: "A.4 Basics",
+  expressions: "A.5 Expressions",
+  statements: "A.6 Statements",
+  declarations: "A.7 Declarations",
+  modules: "A.8 Modules",
+  classes: "A.9 Classes",
+  overloading: "A.10 Overloading",
+  templates: "A.11 Templates",
+  exceptions: "A.12 Exception Handling",
+  preprocessing: "A.13 Preprocessing Directives",
 };
 
-export const SECTION_RULES: Record<SectionId, RuleName[]> = {
-  "keywords": [
+export const SECTION_RULES: Record<SectionId, string[]> = {
+  keywords: [
     "typedef-name",
     "namespace-name",
     "namespace-alias",
     "class-name",
     "enum-name",
-    "template-name"
+    "template-name",
   ],
-  "lexical": [
+  lexical: [
     "n-char",
     "n-char-sequence",
     "named-universal-character",
@@ -2899,9 +2970,9 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "keyword",
     "preprocessing-op-or-punc",
     "preprocessing-operator",
-    "operator-or-punctuator"
+    "operator-or-punctuator",
   ],
-  "literals": [
+  literals: [
     "literal",
     "integer-literal",
     "binary-literal",
@@ -2959,12 +3030,12 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "user-defined-floating-point-literal",
     "user-defined-string-literal",
     "user-defined-character-literal",
-    "ud-suffix"
+    "ud-suffix",
   ],
-  "basics": [
-    "translation-unit"
+  basics: [
+    "translation-unit",
   ],
-  "expressions": [
+  expressions: [
     "primary-expression",
     "id-expression",
     "unqualified-id",
@@ -3025,9 +3096,9 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "assignment-expression",
     "assignment-operator",
     "expression",
-    "constant-expression"
+    "constant-expression",
   ],
-  "statements": [
+  statements: [
     "statement",
     "init-statement",
     "condition",
@@ -3043,9 +3114,9 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "for-range-initializer",
     "jump-statement",
     "coroutine-return-statement",
-    "declaration-statement"
+    "declaration-statement",
   ],
-  "declarations": [
+  declarations: [
     "declaration-seq",
     "declaration",
     "name-declaration",
@@ -3140,9 +3211,9 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "attribute-namespace",
     "attribute-argument-clause",
     "balanced-token-seq",
-    "balanced-token"
+    "balanced-token",
   ],
-  "modules": [
+  modules: [
     "module-declaration",
     "module-name",
     "module-partition",
@@ -3151,11 +3222,8 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "module-import-declaration",
     "global-module-fragment",
     "private-module-fragment",
-    "import-keyword",
-    "module-keyword",
-    "export-keyword"
   ],
-  "classes": [
+  classes: [
     "class-specifier",
     "class-head",
     "class-head-name",
@@ -3179,14 +3247,14 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "ctor-initializer",
     "mem-initializer-list",
     "mem-initializer",
-    "mem-initializer-id"
+    "mem-initializer-id",
   ],
-  "overloading": [
+  overloading: [
     "operator-function-id",
     "operator",
-    "literal-operator-id"
+    "literal-operator-id",
   ],
-  "templates": [
+  templates: [
     "template-declaration",
     "template-head",
     "template-parameter-list",
@@ -3207,17 +3275,17 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "concept-name",
     "typename-specifier",
     "explicit-instantiation",
-    "explicit-specialization"
+    "explicit-specialization",
   ],
-  "exceptions": [
+  exceptions: [
     "try-block",
     "function-try-block",
     "handler-seq",
     "handler",
     "exception-declaration",
-    "noexcept-specifier"
+    "noexcept-specifier",
   ],
-  "preprocessing": [
+  preprocessing: [
     "preprocessing-file",
     "module-file",
     "pp-global-module-fragment",
@@ -3246,19 +3314,29 @@ export const SECTION_RULES: Record<SectionId, RuleName[]> = {
     "has-attribute-expression",
     "pp-module",
     "pp-import",
-    "va-opt-replacement"
-  ]
+    "va-opt-replacement",
+  ],
 };
 
-// Expose safe accessors for React UI.
-export function getRuleFactory(name: RuleName): (() => any) | undefined {
-  return rules.get(name);
+// --- Exports ----------------------------------------------------------------
+
+/**
+ * Union type of all rule names for type safety.
+ */
+export type RuleName = string;
+
+/**
+ * Creates a railroad diagram for a given rule name.
+ * Returns undefined if the rule is not found.
+ */
+export function createRuleDiagram(name: string): any {
+  const factory = rules.get(name);
+  return factory ? factory() : undefined;
 }
 
-export function createRuleDiagram(name: RuleName): any {
-  const factory = rules.get(name);
-  if (!factory) {
-    return Diagram(Comment(`No factory defined for ${name}`));
-  }
-  return factory();
+/**
+ * Get all rule names for grammar coverage checking.
+ */
+export function getRuleNames(): string[] {
+  return Array.from(rules.keys());
 }

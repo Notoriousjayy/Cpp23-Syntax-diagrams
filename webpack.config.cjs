@@ -31,6 +31,7 @@ module.exports = (env, argv) => {
           use: {
             loader: "ts-loader",
             options: {
+              // Keep transpileOnly for fast builds; typecheck is enforced separately in CI
               transpileOnly: true,
               configFile: path.resolve(__dirname, "tsconfig.webpack.json")
             }
@@ -52,7 +53,7 @@ module.exports = (env, argv) => {
     devtool: isProd ? "source-map" : "eval-cheap-module-source-map",
 
     devServer: {
-      port: 5177,
+      port: 5175,
       hot: true,
       historyApiFallback: true,
       client: { overlay: true },

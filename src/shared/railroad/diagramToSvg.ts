@@ -1,3 +1,11 @@
+/**
+ * Converts a railroad-diagrams Diagram to an SVG string.
+ * 
+ * Handles multiple possible API shapes from the @prantlf/railroad-diagrams library:
+ * - `diagram.toSVG()` returning a string
+ * - `diagram.toSVG()` returning a DOM Element
+ * - `diagram.toString()` fallback
+ */
 export function diagramToSvgString(diagram: any): string {
   if (!diagram) return "<!-- empty diagram -->";
 
@@ -7,7 +15,6 @@ export function diagramToSvgString(diagram: any): string {
       if (typeof svg === "string") return svg;
       // If it's an Element/Node, serialize it.
       if (svg && typeof svg === "object" && "nodeType" in svg) {
-        // @ts-expect-error: DOM types at runtime
         const el: Element = svg;
         return el.outerHTML ?? new XMLSerializer().serializeToString(el);
       }
