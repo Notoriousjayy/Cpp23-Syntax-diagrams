@@ -1,125 +1,132 @@
-# C++ Syntax Diagrams
+# C++23 Syntax Diagrams
 
-Interactive railroad diagrams (syntax diagrams) for C++, based on the C++ Standard Grammar Summary (Annex A).
+A React + TypeScript single-page app that renders **C++23 grammar railroad diagrams** (SVG) and shows each rule's **EBNF text** underneath. The grammar is implemented as "diagram factories" that produce railroad-diagram objects.
 
-## Overview
+## Features
 
-This project provides a visual representation of C++'s grammar using railroad diagrams. These diagrams make it easier to understand the syntax structure of C++ by providing a graphical alternative to BNF notation.
+- **Railroad Diagrams**: Visual representation of C++23 grammar rules using SVG
+- **EBNF Definitions**: Collapsible EBNF notation below each diagram
+- **Section Navigation**: Grammar rules organized by category (Keywords, Lexical, Expressions, Declarations, etc.)
+- **Search/Filter**: Filter rules by name
+- **Dark Mode**: Automatic dark mode support
+- **Lazy Rendering**: Sections are collapsed by default for performance with large grammar sets
 
-The grammar rules are organized into 13 sections following the C++ Standard:
-
-- **A.2 Keywords** - typedef-name, namespace-name, class-name, enum-name, template-name
-- **A.3 Lexical Conventions** - Tokens, identifiers, preprocessing tokens
-- **A.3 Literals** - Integer, floating-point, character, string, boolean, pointer literals
-- **A.4 Basics** - Translation unit structure
-- **A.5 Expressions** - All expression types, operators, lambdas, requires-expressions
-- **A.6 Statements** - Labeled, compound, selection, iteration, jump statements
-- **A.7 Declarations** - Specifiers, declarators, initializers, functions, enums, namespaces, attributes
-- **A.8 Modules** - Module declarations, exports, imports, partitions
-- **A.9 Classes** - Class specifiers, members, bases, constructors
-- **A.10 Overloading** - Operator functions, literal operators
-- **A.11 Templates** - Template declarations, parameters, concepts, constraints
-- **A.12 Exception Handling** - try-blocks, handlers, noexcept
-- **A.13 Preprocessing** - Directives, macros, conditionals
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+ 
-- npm
-
-### Installation
+## Quick Start
 
 ```bash
+# Install dependencies
 npm install
-```
 
-### Development
-
-Start the development server:
-
-```bash
+# Run development server
 npm run dev
-```
 
-The application will be available at `http://localhost:5177`.
-
-### Production Build
-
-```bash
+# Build for production
 npm run build
-```
 
-The built files will be in the `dist/` directory.
+# Preview production build
+npm run preview
 
-### Type Checking
-
-```bash
+# Type check
 npm run typecheck
+
+# Check grammar coverage (diagram ↔ EBNF sync)
+npm run check-grammar
 ```
-
-## Technology Stack
-
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Webpack 5** - Bundling
-- **@prantlf/railroad-diagrams** - Railroad diagram generation
 
 ## Project Structure
 
 ```
-cpp-syntax-diagrams/
 ├── src/
-│   ├── main.tsx                          # Entry point
+│   ├── main.tsx                    # Entry point
 │   ├── app/
-│   │   ├── App.tsx                       # Main application component
-│   │   └── styles.css                    # Global styles
+│   │   ├── App.tsx                 # Main application component
+│   │   └── styles.css              # Global styles
 │   ├── components/
-│   │   ├── RuleDiagram.tsx               # Individual rule diagram
-│   │   └── RuleList.tsx                  # List of rule diagrams
+│   │   ├── RuleDiagram.tsx         # Individual rule diagram renderer
+│   │   └── RuleList.tsx            # List of rule diagrams
 │   ├── features/
 │   │   └── grammar/
-│   │       └── cppGrammar.ts             # C++ grammar definitions
+│   │       ├── cppGrammar.ts       # Diagram factories & section definitions
+│   │       └── ebnfDefinitions.ts  # EBNF text definitions
 │   ├── shared/
 │   │   └── railroad/
-│   │       └── diagramToSvg.ts           # SVG rendering utility
+│   │       └── diagramToSvg.ts     # SVG conversion utility
 │   └── types/
-│       └── railroad-diagrams.d.ts        # Type declarations
+│       └── railroad-diagrams.d.ts  # Type declarations
+├── scripts/
+│   └── check-grammar-coverage.mjs  # Grammar/EBNF drift detection
 ├── .github/
-│   ├── dependabot.yml
-│   └── workflows/
-│       ├── codeql.yml
-│       ├── dependency-review.yml
-│       └── pages.yml
-├── index.html
-├── package.json
-├── tsconfig.json
-├── tsconfig.webpack.json
-└── webpack.config.cjs
+│   ├── workflows/
+│   │   ├── pages.yml               # GitHub Pages deployment
+│   │   ├── ci.yml                  # CI pipeline with typecheck
+│   │   ├── codeql.yml              # Security scanning
+│   │   └── dependency-review.yml   # Dependency vulnerability review
+│   └── dependabot.yml              # Automated dependency updates
+└── webpack.config.cjs              # Webpack configuration
 ```
 
-## Grammar Coverage
+## Grammar Sections
 
-This project covers the complete C++ grammar including:
+The C++23 grammar is organized into sections following Annex A of the C++ Standard:
 
-- **Lexical Elements**: Tokens, identifiers, keywords, operators, punctuators
-- **Literals**: All literal types including user-defined literals
-- **Expressions**: Full expression hierarchy with operator precedence
-- **Statements**: All statement types including coroutines (co_await, co_yield, co_return)
-- **Declarations**: Complete declaration syntax including structured bindings
-- **Modules**: C++20 module system
-- **Classes**: Class definitions, inheritance, member access, constructors
-- **Templates**: Template declarations, concepts, constraints, deduction guides
-- **Exceptions**: try-catch, noexcept specifications
-- **Preprocessing**: All preprocessor directives
+- **A.2 Keywords** - typedef-name, namespace-name, class-name, etc.
+- **A.3 Lexical Conventions** - tokens, identifiers, operators
+- **A.3 Literals** - integer, floating, character, string literals
+- **A.4 Basics** - translation units, names, types
+- **A.5 Expressions** - primary, postfix, unary, binary expressions
+- **A.6 Statements** - compound, selection, iteration, jump statements
+- **A.7 Declarations** - specifiers, declarators, initializers
+- **A.8 Modules** - module declarations, imports, exports
+- **A.9 Classes** - class definitions, members, access
+- **A.10 Overloading** - operator functions, literal operators
+- **A.11 Templates** - template declarations, parameters, concepts
+- **A.12 Exception Handling** - try-blocks, handlers, noexcept
+- **A.13 Preprocessing Directives** - #if, #include, #define, etc.
+
+## CI/CD
+
+The project uses GitHub Actions for:
+
+1. **Type Safety**: `npm run typecheck` runs before every build
+2. **Grammar Coverage**: `npm run check-grammar` ensures diagram factories and EBNF definitions stay in sync
+3. **Security Scanning**: CodeQL analysis on push/PR and weekly schedule
+4. **Dependency Review**: Checks PRs for vulnerable dependencies
+5. **Automated Deployment**: GitHub Pages deployment on push to main
+
+## Development Notes
+
+### Adding New Grammar Rules
+
+1. Add the diagram factory in `src/features/grammar/cppGrammar.ts`:
+   ```typescript
+   rules.set("my-new-rule", () =>
+     Diagram(
+       Sequence(T("keyword"), NT("identifier"))
+     )
+   );
+   ```
+
+2. Add the EBNF definition in `src/features/grammar/ebnfDefinitions.ts`:
+   ```typescript
+   "my-new-rule": `my-new-rule:
+       keyword identifier`,
+   ```
+
+3. Add the rule to the appropriate section in `SECTION_RULES`
+
+4. Run `npm run check-grammar` to verify coverage
+
+### SVG Trust Boundary
+
+The `RuleDiagram` component uses `dangerouslySetInnerHTML` to render SVG. This is safe because:
+- SVG is generated locally from deterministic factories
+- No untrusted user input is processed
+- If external grammar loading is added in the future, implement defensive sanitization
 
 ## References
 
-- [C++ Standard Draft (eel.is)](https://eel.is/c++draft/)
-- [C++ Grammar Summary](https://eel.is/c++draft/gram)
-- [cppreference.com](https://en.cppreference.com/)
-- [Railroad Diagram (Wikipedia)](https://en.wikipedia.org/wiki/Syntax_diagram)
+- [C++ Standard Grammar (eel.is)](https://eel.is/c++draft/gram)
+- [ISO/IEC 14882:2024 (C++23)](https://www.iso.org/standard/83626.html)
 
 ## License
 

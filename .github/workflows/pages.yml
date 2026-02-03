@@ -28,8 +28,14 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+      - run: npm ci
+
+      # Type safety enforcement: catch type errors before deployment
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
 
       - name: Install dependencies
         run: npm ci
